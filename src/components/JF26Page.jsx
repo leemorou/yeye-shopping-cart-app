@@ -5,13 +5,13 @@ import {
     Database, ShoppingCart, MapPin, Truck, List, ArrowUp, ArrowDown, Home, 
     Crown, LogOut, Camera, Key, Calendar, Clock, CheckCircle, ArrowLeft,
     Ticket, DollarSign, Package, Check, XCircle, Clock3,
-    ZoomIn, ZoomOut, RotateCcw // ★ 新增這些圖示
+    ZoomIn, ZoomOut, RotateCcw // 確保有引入這些 Icon
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
-// ★ 引入縮放套件 (請確認有 npm install react-zoom-pan-pinch)
+// 引入縮放套件 (請確認有 npm install react-zoom-pan-pinch)
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 // 引入需要的 Modal 表單
@@ -58,7 +58,7 @@ export default function JF26Page({ currentUser }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const [modalType, setModalType] = useState(null); 
     
-    // Lightbox 狀態
+    // ★ 圖片 Lightbox 狀態 (移至最外層以避免被 Tab 動畫遮擋)
     const [lightboxImg, setLightboxImg] = useState(null);
 
     // Admin Check
@@ -190,9 +190,9 @@ export default function JF26Page({ currentUser }) {
                         <div className="absolute -bottom-2 -right-4 w-[110%] h-6 bg-yellow-400 -z-0 transform -skew-x-6"></div>
                     </div>
                     <p className="text-slate-500 font-bold mt-4 flex items-center justify-center gap-2">
-                        <Rocket size={18} className="text-slate-900" /> 攤商情報懶人包
+                        <Rocket size={18} className="text-slate-900" /> 荷包起飛中...
                     </p>
-
+                    
                     {/* 連結區塊 */}
                     <div className="flex justify-center gap-3 text-sm font-black mt-6 flex-wrap">
                         <a href="https://www.jumpfesta.com/maker/" target="_blank" rel="noreferrer" className="px-4 py-1.5 bg-white border-2 border-slate-900 shadow-[4px_4px_0px_0px_#0f172a] hover:translate-y-0.5 hover:shadow-[2px_2px_0px_0px_#0f172a] transition-all flex items-center gap-1 rounded">
@@ -233,7 +233,7 @@ export default function JF26Page({ currentUser }) {
                         <JSPreOrderTab 
                             currentUser={currentUser} 
                             isAdmin={isAdmin} 
-                            onImageClick={setLightboxImg}
+                            onImageClick={setLightboxImg} // ★ 傳遞點擊事件
                         />
                     )}
                     {currentTab === 'jcs_lottery' && (
@@ -253,7 +253,7 @@ export default function JF26Page({ currentUser }) {
                 <ChangeAvatarForm currentUser={currentUser} onSubmit={handleChangeAvatar} />
             </Modal>
 
-            {/* ★ 圖片 Lightbox (大圖檢視模式) - 使用 TransformWrapper 實作縮放 */}
+            {/* ★ 圖片 Lightbox (大圖檢視模式) - 含控制按鈕 */}
             {lightboxImg && (
                 <div 
                     className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-0 animate-in fade-in duration-200"
@@ -267,19 +267,19 @@ export default function JF26Page({ currentUser }) {
                         {({ zoomIn, zoomOut, resetTransform }) => (
                             <>
                                 {/* 控制工具列 */}
-                                <div className="absolute top-4 right-4 z-[110] flex items-center gap-2 bg-slate-900/50 p-2 rounded-full backdrop-blur">
-                                    <button onClick={() => zoomIn()} className="p-2 text-white hover:text-yellow-400 hover:bg-slate-700/50 rounded-full transition-colors" title="放大">
-                                        <ZoomIn size={24} />
+                                <div className="absolute top-4 right-4 z-[110] flex items-center gap-2 bg-slate-900/80 p-2 rounded-full backdrop-blur border border-slate-700 shadow-xl">
+                                    <button onClick={() => zoomIn()} className="p-2 text-white hover:text-yellow-400 hover:bg-white/10 rounded-full transition-colors" title="放大">
+                                        <ZoomIn size={20} />
                                     </button>
-                                    <button onClick={() => zoomOut()} className="p-2 text-white hover:text-yellow-400 hover:bg-slate-700/50 rounded-full transition-colors" title="縮小">
-                                        <ZoomOut size={24} />
+                                    <button onClick={() => zoomOut()} className="p-2 text-white hover:text-yellow-400 hover:bg-white/10 rounded-full transition-colors" title="縮小">
+                                        <ZoomOut size={20} />
                                     </button>
-                                    <button onClick={() => resetTransform()} className="p-2 text-white hover:text-yellow-400 hover:bg-slate-700/50 rounded-full transition-colors" title="重置">
-                                        <RotateCcw size={24} />
+                                    <button onClick={() => resetTransform()} className="p-2 text-white hover:text-yellow-400 hover:bg-white/10 rounded-full transition-colors" title="重置">
+                                        <RotateCcw size={20} />
                                     </button>
                                     <div className="w-px h-6 bg-slate-600 mx-1"></div>
-                                    <button onClick={() => setLightboxImg(null)} className="p-2 text-white hover:text-red-400 hover:bg-slate-700/50 rounded-full transition-colors" title="關閉">
-                                        <X size={24} />
+                                    <button onClick={() => setLightboxImg(null)} className="p-2 text-white hover:text-red-400 hover:bg-white/10 rounded-full transition-colors" title="關閉">
+                                        <X size={20} />
                                     </button>
                                 </div>
 
@@ -411,8 +411,8 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         <div>
             {isAdmin && vendors.length === 0 && (
                 <div className="flex justify-end mb-4">
-                     <button onClick={handleInitData} className="px-4 py-1.5 bg-blue-100 text-blue-600 border border-blue-300 rounded hover:bg-blue-200 flex items-center gap-1 font-bold text-xs">
-                        <Database size={12} /> 匯入預設資料庫
+                     <button onClick={handleInitData} className="px-4 py-1.5 bg-blue-100 text-blue-600 border border-blue-300 rounded hover:bg-blue-200 flex items-center gap-1 font-bold">
+                        <Database size={12} /> 匯入資料庫
                     </button>
                 </div>
             )}
@@ -621,11 +621,11 @@ function JSPreOrderTab({ currentUser, isAdmin, onImageClick }) { // 接收 onIma
                         <h3 className="text-3xl font-black italic mb-2">JUMP SHOP ONLINE 先行</h3>
                         <div className="space-y-1 font-bold text-white">
                              <p className="flex items-center gap-2"><Clock3 size={18} className="text-yellow-400"/> 販售期間：12/17 11:00 ～ 12/21 16:00</p>
-                             <a href="https://jumpshop-online.com/collections/jf2026" target="_blank" rel="noreferrer" className="flex items-center gap-2 underline hover:text-yellow-300"><ExternalLink size={18} /> https://jumpshop-online.com/collections/jf2026</a>
+                             <a href="https://jumpshop-online.com/collections/jf2026" target="_blank" rel="noreferrer" className="flex items-center gap-2 underline hover:text-yellow-300"><ExternalLink size={18} /> JUMP SHOP ONLINE JF26先行商品區</a>
                         </div>
                     </div>
-                    <div className="bg-yellow-400 text-slate-900 px-4 py-2 rounded font-black border-2 border-white transform rotate-2">
-                        事前受注生產
+                    <div className="bg-yellow-400 text-slate-900 px-4 py-2 rounded font-black border-2 border-yellow-600 transform rotate-2">
+                        先行搶購結果(17號午間公布)
                     </div>
                 </div>
             </div>
@@ -755,20 +755,20 @@ function JCSLotteryTab({ currentUser, isAdmin }) {
 
     return (
         <div>
-             {/* ★ 修改重點：這裡加入了 mb-10 增加間距 */}
-            <div className="mb-10 bg-purple-600 text-white p-6 rounded-xl border-4 border-slate-900 shadow-[8px_8px_0px_0px_#0f172a]">
-                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                     <div>
+            {/* Banner Info */}
+            <div className="bg-slate-900 text-yellow-400 p-6 rounded-xl border-4 border-yellow-400 shadow-[8px_8px_0px_0px_#0f172a] relative overflow-hidden mb-10">
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
                         <h3 className="text-3xl font-black italic mb-2">JUMP CHARACTERS STORE 抽選</h3>
-                        <div className="space-y-1 font-bold text-purple-100">
-                             <p className="flex items-center gap-2"><Clock3 size={18} className="text-yellow-400"/> 抽選期間：12/17 11:00 ～ 12/21 16:00</p>
-                             <a href="https://jumpcs.shueisha.co.jp/shop/default.aspx" target="_blank" rel="noreferrer" className="flex items-center gap-2 underline hover:text-white"><ExternalLink size={18} /> 抽選網站</a>
+                        <div className="space-y-1 font-bold text-white">
+                             <p className="flex items-center gap-2"><Clock3 size={18} className="text-yellow-400"/> 抽選期間：12/17 11:00 ~ 12/21 16:00</p>
+                             <a href="https://jumpcs.shueisha.co.jp/shop/default.aspx" target="_blank" rel="noreferrer" className="flex items-center gap-2 underline hover:text-yellow-300"><ExternalLink size={18} />抽選網站</a>
                         </div>
-                     </div>
-                     <div className="bg-yellow-400 text-slate-900 px-4 py-2 rounded font-black border-2 border-slate-900 transform rotate-2 shadow-lg">
-                        12/23 公布結果
                     </div>
-                 </div>
+                    <div className="bg-yellow-400 text-slate-900 px-4 py-2 rounded font-black border-2 border-yellow-600 transform rotate-2">
+                        抽選結果(23號公布)
+                    </div>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
