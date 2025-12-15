@@ -1,5 +1,6 @@
 // src/App.jsx
 import { useState, useEffect, useMemo, useCallback } from "react"; 
+import { HashRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom'; // ★ 新增路由相關
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { 
@@ -21,7 +22,7 @@ import ChangeNameForm from "./components/ChangeNameForm";
 import Modal from "./components/Modal";
 import ImageSlider from "./components/ImageSlider";
 import RichTextEditor from "./components/RichTextEditor";
-import JF26Page from "./components/JF26Page"; // ★ 引入 JF26 頁面組件
+import JF26Page from "./components/JF26Page"; 
 
 import { db, auth } from "./firebase";
 
@@ -30,12 +31,9 @@ const STATUS_STEPS = ["下單中", "已下單", "日本出貨", "抵達日倉", 
 const PAYMENT_STATUS_OPTIONS = ["商品金額", "二補金額", "商品+二補金額"];
 const MONTHLY_FEE = 90; 
 
-export default function App() {
-    const [user, setUser] = useState(null);       
-    const [appUser, setAppUser] = useState(null); 
-    const [loading, setLoading] = useState(true);
-    
-    const [usersData, setUsersData] = useState([]);
+// ★ 1. 將原本 App 的主要內容拆出來變成 "Dashboard"
+function Dashboard({ appUser, usersData, handleLogout }) {
+    // === 這裡保留原本 App.jsx 的絕大部分邏輯 ===
     const [wishes, setWishes] = useState([]);
     const [groups, setGroups] = useState([]);
     const [orders, setOrders] = useState([]);
@@ -48,7 +46,6 @@ export default function App() {
     const [activeTab, setActiveTab] = useState('wishing');
     const [menuOpen, setMenuOpen] = useState(false);
 
-    // 篩選 State
     const [filterStart, setFilterStart] = useState('');
     const [filterEnd, setFilterEnd] = useState('');
 
@@ -60,61 +57,22 @@ export default function App() {
     const [currentPage, setCurrentPage] = useState(1);
 
     const selectedGroup = groups.find(g => g.id === selectedGroupId) || null;
+    const navigate = useNavigate(); // 用於跳轉
 
-    const handleLogout = useCallback(() => {
-        setAppUser(null);
-        localStorage.removeItem('app_user_id');
-        setMenuOpen(false);
-        setLoading(false); 
-    }, []);
-
-    // 1. Firebase Auth
+    // 2. 數據監聽 (Wishes, Groups, Orders) - 移到 Dashboard 內部
     useEffect(() => {
-        const init = async () => {
-            try { if (!auth.currentUser) await signInAnonymously(auth); } 
-            catch (e) { console.error("Firebase 登入失敗", e); }
-        };
-        init();
-        return onAuthStateChanged(auth, (u) => {
-            setUser(u);
-        });
-    }, []);
-
-    // 2. 數據監聽
-    useEffect(() => {
-        if (!user) return;
-        
-        const unsubUsers = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "users"), (snap) => {
-            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setUsersData(list);
-        });
-
-        const storedUserId = localStorage.getItem('app_user_id');
-        let unsubAppUser = () => {};
-
-        if (storedUserId) {
-            unsubAppUser = onSnapshot(doc(db, "artifacts", "default-app-id", "public", "data", "users", storedUserId), (docSnap) => {
-                if (docSnap.exists()) {
-                    setAppUser({ id: docSnap.id, ...docSnap.data() });
-                    setLoading(false); 
-                } else { handleLogout(); }
-            }, () => handleLogout());
-        } else { setLoading(false); }
-
         const unsubWishes = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), (snap) => setWishes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubGroups = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), (snap) => setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubOrders = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), (snap) => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-
-        return () => { unsubUsers(); unsubAppUser(); unsubWishes(); unsubGroups(); unsubOrders(); };
-    }, [user, handleLogout]);
-
-    useEffect(() => {
+        
         const unsubBulletin = onSnapshot(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), (docSnap) => {
             if (docSnap.exists()) setBulletin(docSnap.data().content);
         });
-        return () => unsubBulletin();
+
+        return () => { unsubWishes(); unsubGroups(); unsubOrders(); unsubBulletin(); };
     }, []);
 
+    // ... (保留原本的自動清理、自動過期檢查邏輯) ...
     useEffect(() => {
         if (groups.length === 0) return;
         const checkAndCleanup = async () => {
@@ -132,7 +90,6 @@ export default function App() {
         checkAndCleanup();
     }, [groups]);
 
-    // 自動檢查會員過期
     useEffect(() => {
         if (usersData.length === 0) return;
         const now = new Date();
@@ -140,30 +97,17 @@ export default function App() {
             if (u.isMember && u.memberValidUntil && new Date(u.memberValidUntil) < now) {
                 try {
                     await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', u.id), {
-                        isMember: false,
-                        memberValidUntil: null,
-                        memberCancelledAt: null 
+                        isMember: false, memberValidUntil: null, memberCancelledAt: null 
                     });
                 } catch (e) { console.error("更新過期會員失敗", e); }
             }
         });
     }, [usersData]);
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [activeTab, filterStart, filterEnd]);
+    useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd]);
 
-    // --- Actions ---
-    const handleLogin = (incomingId, password) => {
-        const userId = (typeof incomingId === 'object' && incomingId !== null) ? incomingId.id : incomingId;
-        const targetUser = usersData.find(u => u.id === userId);
-        if (targetUser && String(targetUser.password).trim() === String(password).trim()) {
-            localStorage.setItem('app_user_id', targetUser.id);
-            setAppUser(targetUser); 
-            setLoading(false); 
-        } else { alert("密碼錯誤！"); }
-    };
-
+    // ... (保留原本所有的 Actions: handleChangePassword, handleWishSubmit 等等) ...
+    // 因篇幅關係，這裡直接沿用你原本的函式邏輯，不變動
     const handleChangePassword = async (newPwd) => {
         if (!appUser) return;
         await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { password: newPwd });
@@ -189,35 +133,24 @@ export default function App() {
 
     const handleToggleMembership = async () => {
         if (!appUser) return;
+        // ... (邏輯同原版) ...
         if (appUser.isMember) {
             if (appUser.memberValidUntil) {
                 if (confirm("要恢復自動續訂嗎？\n您的會員資格將繼續保持。")) {
-                    await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), {
-                        memberValidUntil: null, 
-                        memberCancelledAt: null
-                    });
+                    await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { memberValidUntil: null, memberCancelledAt: null });
                     alert("已恢復續訂！");
                 }
             } else {
                 if (confirm("確定要取消訂閱嗎？\n會員資格將保留 30 天，之後自動失效。")) {
                     const next30Days = new Date();
                     next30Days.setDate(next30Days.getDate() + 30); 
-                    await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), {
-                        isMember: true, 
-                        memberValidUntil: next30Days.toISOString(),
-                        memberCancelledAt: new Date().toISOString()
-                    });
+                    await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { isMember: true, memberValidUntil: next30Days.toISOString(), memberCancelledAt: new Date().toISOString() });
                     alert(`已取消續訂。\n您的會員資格將保留至 ${next30Days.toLocaleDateString()}。`);
                 }
             }
         } else {
             if (confirm("確定要訂閱 PLUS ULTRA 會員嗎？\n將共同分擔日本門號維持費。")) {
-                await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), {
-                    isMember: true,
-                    memberSince: new Date().toISOString(),
-                    memberValidUntil: null, 
-                    memberCancelledAt: null
-                });
+                await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { isMember: true, memberSince: new Date().toISOString(), memberValidUntil: null, memberCancelledAt: null });
                 alert("歡迎加入英雄會員！");
             }
         }
@@ -228,26 +161,20 @@ export default function App() {
             if (editingWish) {
                 await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "wishes", editingWish.id), { ...data });
             } else {
-                await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), {
-                    ...data, authorName: appUser.name, authorId: appUser.id, createdAt: new Date().toISOString(), plusOnes: []
-                });
+                await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), { ...data, authorName: appUser.name, authorId: appUser.id, createdAt: new Date().toISOString(), plusOnes: [] });
             }
-            setModalType(null);
-            setEditingWish(null);
+            setModalType(null); setEditingWish(null);
         } catch (e) { console.error(e); alert("操作失敗"); }
     };
 
     const handleDeleteWish = async (wish) => {
         if (!confirm(`確定要刪除願望「${wish.title}」嗎？`)) return;
-        try { await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "wishes", wish.id)); } 
-        catch (e) { console.error(e); }
+        try { await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "wishes", wish.id)); } catch (e) { console.error(e); }
     };
 
     const handleDeleteGroup = async (group) => {
         if (!confirm(`確定要刪除團務「${group.title}」嗎？\n刪除後無法復原喔！`)) return;
-        try {
-            await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id));
-        } catch (e) { console.error("刪除失敗", e); alert("刪除失敗，請稍後再試。"); }
+        try { await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id)); } catch (e) { console.error("刪除失敗", e); alert("刪除失敗"); }
     };
 
     const handlePlusOne = async (wish) => {
@@ -259,85 +186,45 @@ export default function App() {
     };
 
     const handleCreateGroup = async (data) => {
-        await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), {
-            ...data, createdAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '商品金額'
-        });
+        await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { ...data, createdAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '商品金額' });
         setModalType(null);
     };
 
     const handleCreatePersonalRequest = async (data) => {
+        // ... (邏輯同原版) ...
         const groupData = {
-            title: `[個人委託] ${data.ipName}`,
-            type: '個人委託',
-            infoUrl: data.sourceUrl,
-            status: '揪團中',
-            createdBy: appUser.name,
-            createdById: appUser.id,
-            createdAt: new Date().toISOString(),
-            exchangeRate: 0.21,
-            shippingFee: 0,
-            deadline: '個人委託',
-            items: data.items.map(i => ({
-                id: i.id,
-                name: i.name,
-                price: i.price,
-                limit: i.quantity,
-                image: '',
-                spec: ''
-            })),
-            note: data.note,
-            requestType: data.type,
-            secondPayment: {},
-            paymentStatus: '商品金額'
+            title: `[個人委託] ${data.ipName}`, type: '個人委託', infoUrl: data.sourceUrl, status: '揪團中', createdBy: appUser.name, createdById: appUser.id, createdAt: new Date().toISOString(), exchangeRate: 0.21, shippingFee: 0, deadline: '個人委託',
+            items: data.items.map(i => ({ id: i.id, name: i.name, price: i.price, limit: i.quantity, image: '', spec: '' })), note: data.note, requestType: data.type, secondPayment: {}, paymentStatus: '商品金額'
         };
-
         try {
             const docRef = await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), groupData);
             const orderItems = data.items.map(i => ({ itemId: i.id, name: i.name, price: i.price, quantity: i.quantity, image: '' }));
-            await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), {
-                groupId: docRef.id, userId: appUser.id, userName: appUser.name, items: orderItems, updatedAt: new Date().toISOString()
-            });
-            setModalType(null);
-            alert("委託單已發布！並已自動為您建立訂單。");
+            await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), { groupId: docRef.id, userId: appUser.id, userName: appUser.name, items: orderItems, updatedAt: new Date().toISOString() });
+            setModalType(null); alert("委託單已發布！並已自動為您建立訂單。");
         } catch (e) { console.error("發布失敗", e); alert("發布失敗"); }
     };
 
     const handleUpdateGroup = async (data) => {
         if (!editingGroup) return;
         try {
-            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", editingGroup.id), {
-                ...data, status: editingGroup.status, createdAt: editingGroup.createdAt, exchangeRate: editingGroup.exchangeRate, shippingFee: editingGroup.shippingFee
-            });
-            setModalType(null);
-            setEditingGroup(null);
-            alert("團務資訊已更新！");
+            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", editingGroup.id), { ...data, status: editingGroup.status, createdAt: editingGroup.createdAt, exchangeRate: editingGroup.exchangeRate, shippingFee: editingGroup.shippingFee });
+            setModalType(null); setEditingGroup(null); alert("團務資訊已更新！");
         } catch (e) { console.error("更新失敗", e); alert("更新失敗"); }
     };
 
     const handleUpdateSecondPayment = async (secondPaymentData) => {
         if (!selectedGroup) return;
-        try {
-            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", selectedGroup.id), {
-                secondPayment: secondPaymentData
-            });
-            alert("二補資訊已更新！");
-        } catch (e) { console.error("二補更新失敗", e); alert("更新失敗"); }
+        try { await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", selectedGroup.id), { secondPayment: secondPaymentData }); alert("二補資訊已更新！"); } catch (e) { console.error("二補更新失敗", e); alert("更新失敗"); }
     };
 
     const handleSubmitOrder = async (items, groupId) => {
         const existingOrder = orders.find(o => o.groupId === groupId && o.userId === appUser.id);
-        
         if (items.length === 0) {
             if (existingOrder) {
-                try {
-                    await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "orders", existingOrder.id));
-                    alert("訂單已成功取消！");
-                } catch (e) { console.error("刪除訂單失敗", e); alert("取消訂單失敗"); }
+                try { await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "orders", existingOrder.id)); alert("訂單已成功取消！"); } catch (e) { console.error("刪除訂單失敗", e); alert("取消訂單失敗"); }
             }
-            setModalType('viewOrders');
-            return;
+            setModalType('viewOrders'); return;
         }
-
         const orderData = { groupId, userId: appUser.id, userName: appUser.name, items, updatedAt: new Date().toISOString() };
         if (existingOrder) await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "orders", existingOrder.id), orderData);
         else await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), orderData);
@@ -351,46 +238,30 @@ export default function App() {
 
     const handleUpdateGroupStatus = async (group, newStatus) => {
         const updates = { trackingStatus: newStatus };
-        if (newStatus === '已結案') {
-            updates.status = '已結案';
-            updates.closedAt = new Date().toISOString(); 
-        }
-        if (newStatus === '二補計算') {
-            updates.status = '二補計算';
-        }
+        if (newStatus === '已結案') { updates.status = '已結案'; updates.closedAt = new Date().toISOString(); }
+        if (newStatus === '二補計算') { updates.status = '二補計算'; }
         await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id), updates);
     };
 
     const handleUpdatePaymentStatus = async (group, newPaymentStatus) => {
-        await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id), {
-            paymentStatus: newPaymentStatus
-        });
+        await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id), { paymentStatus: newPaymentStatus });
     };
 
     const handleSaveBulletin = async () => {
-        try {
-            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), { content: tempBulletin }).catch(async () => {});
-            setBulletin(tempBulletin);
-            setIsEditingBulletin(false);
-            alert("公告已更新！Plus Ultra！");
-        } catch (e) { console.error("更新公告失敗", e); alert("更新失敗"); }
+        try { await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), { content: tempBulletin }).catch(async () => {}); setBulletin(tempBulletin); setIsEditingBulletin(false); alert("公告已更新！Plus Ultra！"); } catch (e) { console.error("更新公告失敗", e); alert("更新失敗"); }
     };
 
     const totalTWD = useMemo(() => {
         if (!orders || !groups || orders.length === 0 || !appUser) return 0;
-        
         return orders.reduce((acc, order) => {
             if (order.userId !== appUser.id) return acc;
-            
             const g = groups.find(g => g.id === order.groupId);
             if (!g) return acc;
-
             if (['已成團', '二補計算'].includes(g.status)) {
-                
+                // ... (計算邏輯同原版) ...
                 const rate = Number(g.exchangeRate || 0);
                 const shippingFeeJPY = Number(g.shippingFee || 0); 
                 const itemsJPY = (order.items || []).reduce((sum, item) => sum + (Number(item.price||0) * Number(item.quantity||1)), 0);
-                
                 const itemTotalJPY = itemsJPY + shippingFeeJPY;
                 const itemTotalTWD = Math.round(itemTotalJPY * rate);
 
@@ -404,10 +275,7 @@ export default function App() {
                     const groupOrders = orders.filter(o => o.groupId === g.id);
                     let groupTotalItems = 0;
                     const uniqueUserCount = new Set(groupOrders.map(o => o.userId)).size;
-
-                    groupOrders.forEach(o => {
-                        o.items.forEach(i => groupTotalItems += i.quantity);
-                    });
+                    groupOrders.forEach(o => { o.items.forEach(i => groupTotalItems += i.quantity); });
 
                     const boxCost = boxWeight * RATE_PER_KG;
                     const boxCostPerItem = groupTotalItems > 0 ? boxCost / groupTotalItems : 0;
@@ -420,22 +288,15 @@ export default function App() {
                     });
                     secondPayTWD += minChargePerPerson;
                 }
-
                 const status = g.paymentStatus || '商品金額'; 
-                
-                if (status === '商品金額') {
-                    return acc + itemTotalTWD;
-                } else if (status === '二補金額') {
-                    return acc + Math.round(secondPayTWD);
-                } else if (status === '商品+二補金額') {
-                    return acc + itemTotalTWD + Math.round(secondPayTWD);
-                }
+                if (status === '商品金額') return acc + itemTotalTWD;
+                else if (status === '二補金額') return acc + Math.round(secondPayTWD);
+                else if (status === '商品+二補金額') return acc + itemTotalTWD + Math.round(secondPayTWD);
             }
             return acc;
         }, 0); 
     }, [orders, groups, appUser]); 
 
-    // 計算會員分攤費
     const { memberFeeSplit, isMember } = useMemo(() => {
         if (!appUser || !usersData.length) return { memberFeeSplit: 0, isMember: false };
         const memberCount = usersData.filter(u => u.isMember).length;
@@ -445,7 +306,6 @@ export default function App() {
 
     const processGroups = (statusList, dateField = 'deadline') => {
         let filtered = groups.filter(g => statusList.includes(g.status));
-
         if (filterStart || filterEnd) {
             filtered = filtered.filter(g => {
                 if (!g.deadline || g.deadline === '個人委託') return false; 
@@ -455,7 +315,6 @@ export default function App() {
                 return deadlineTime >= start && deadlineTime < end;
             });
         }
-
         return filtered.sort((a, b) => {
             const dateA = a.releaseDate || '9999-12-31';
             const dateB = b.releaseDate || '9999-12-31';
@@ -474,8 +333,7 @@ export default function App() {
                      : activeTab === 'closed' ? closedGroups 
                      : []; 
 
-    // ★ 修改：如果是 'jf26' 就不需要分頁，或者給空陣列
-    const listForPagination = activeTab === 'jf26' ? [] : targetList;
+    const listForPagination = targetList; // Dashboard 不需要 JF26 tab 了
     const totalPages = Math.ceil(listForPagination.length / ITEMS_PER_PAGE);
 
     const paginatedList = listForPagination.slice(
@@ -496,15 +354,6 @@ export default function App() {
         );
     };
 
-    if (loading) return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-yellow-400">
-            <div className="flex items-center gap-2 mb-4 animate-bounce"><School size={80} className="text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]" /></div>
-            <p className="text-3xl font-black italic tracking-widest animate-pulse">PLUS ULTRA...</p>
-        </div>
-    );
-
-    if (!appUser) return <LoginScreen users={usersData} onLogin={handleLogin} />;
-
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-20 selection:bg-yellow-400 selection:text-black">
             
@@ -520,10 +369,7 @@ export default function App() {
                             <div className="text-yellow-400 font-black leading-none drop-shadow-sm text-right">
                                 <span className="text-xs mr-1 text-yellow-200">NT$</span>
                                 <span className="text-lg sm:text-xl font-mono">
-                                    {isMember 
-                                        ? `${memberFeeSplit} + ${totalTWD.toLocaleString()}` 
-                                        : totalTWD.toLocaleString()
-                                    }
+                                    {isMember ? `${memberFeeSplit} + ${totalTWD.toLocaleString()}` : totalTWD.toLocaleString()}
                                 </span>
                             </div>
                         </div>
@@ -531,39 +377,26 @@ export default function App() {
                         <div className="relative">
                             <button onClick={() => setMenuOpen(!menuOpen)} className={`w-10 h-10 rounded-full bg-slate-800 border-2 ${isMember ? 'border-purple-500' : 'border-yellow-400'} shadow-lg overflow-hidden hover:scale-105 transition-all relative`}>
                                 <img src={appUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${appUser.name}`} alt="avatar" className="w-full h-full object-cover" />
-                                {isMember && (
-                                    <div className="absolute -top-1 -right-1 bg-purple-600 rounded-full p-0.5 border border-white">
-                                        <Crown size={8} className="text-white fill-white" />
-                                    </div>
-                                )}
+                                {isMember && (<div className="absolute -top-1 -right-1 bg-purple-600 rounded-full p-0.5 border border-white"><Crown size={8} className="text-white fill-white" /></div>)}
                             </button>
                             
                             {menuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border-2 border-slate-900 py-1 z-50 animate-in fade-in slide-in-from-top-2">
                                     <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
                                         <div className="flex justify-between items-center mb-1">
-                                            <span className="text-xs font-black text-slate-500 flex items-center gap-1">
-                                                <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
-                                                PLUS 會員
-                                            </span>
+                                            <span className="text-xs font-black text-slate-500 flex items-center gap-1"><Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />PLUS 會員</span>
                                             {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
                                         </div>
-                                        <button 
-                                            onClick={handleToggleMembership}
-                                            className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && appUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
-                                        >
-                                            {isMember 
-                                                ? (appUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
-                                                : "訂閱會員 (NT$90/月均分)"}
+                                        <button onClick={handleToggleMembership} className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && appUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}>
+                                            {isMember ? (appUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") : "訂閱會員 (NT$90/月均分)"}
                                         </button>
-                                        {(appUser.memberSince || appUser.memberCancelledAt) && (appUser.id === user.uid || appUser.name === ADMIN_USER) && (
+                                        {(appUser.memberSince || appUser.memberCancelledAt) && (appUser.id === appUser.id || appUser.name === ADMIN_USER) && (
                                             <div className="mt-2 text-[10px] text-slate-400 border-t border-slate-200 pt-1 space-y-0.5">
                                                 {appUser.memberSince && <div className="flex items-center gap-1"><Clock size={8}/> 加入日: {new Date(appUser.memberSince).toLocaleDateString()}</div>}
                                                 {appUser.memberValidUntil && <div className="text-red-500 font-bold flex items-center gap-1"><Calendar size={8}/> 到期日: {new Date(appUser.memberValidUntil).toLocaleDateString()}</div>}
                                             </div>
                                         )}
                                     </div>
-
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeName'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Tag size={16} /> 修改暱稱</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeAvatar'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Camera size={16} /> 更換英雄頭像</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changePwd'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Key size={16} /> 修改密碼</button>
@@ -599,65 +432,46 @@ export default function App() {
                         </div>
                     </div>
 
-                    {/* ★ JF26 專區貼紙 (佔 1 欄) */}
+                    {/* ★ 改用 Link 或 navigate 跳轉到 /jf26 */}
                     <div className="md:col-span-1">
-                        <button
-                            onClick={() => setActiveTab('jf26')}
-                            className="w-full h-full relative group transition-all duration-300 hover:-translate-y-1 focus:outline-none"
+                        <Link
+                            to="/jf26"
+                            className="block w-full h-full relative group transition-all duration-300 hover:-translate-y-1 focus:outline-none"
                         >
                             <div className="h-full bg-white p-2 rounded-xl border-4 border-slate-900 shadow-[4px_4px_0px_0px_#FACC15] transition-all overflow-hidden relative flex flex-col">
                                 <div className="bg-slate-900 text-yellow-400 font-black text-center text-sm py-1 mb-1 italic">
                                     JF26 專區
                                 </div>
-                                
                                 <div className="flex-1 overflow-hidden rounded-lg border-2 border-slate-100 relative">
-                                    <img
-                                        src="https://www.jumpfesta.com/assets/images/top_jumpfesta_pc@2x.webp"
-                                        alt="JF26"
-                                        className="w-full h-full object-cover"
-                                    />
+                                    <img src="https://www.jumpfesta.com/assets/images/top_jumpfesta_pc@2x.webp" alt="JF26" className="w-full h-full object-cover" />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
                                 </div>
-
                                 <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse border border-white shadow-sm transform rotate-12">
                                     HOT!
                                 </div>
                             </div>
-                        </button>
+                        </Link>
                     </div>
                 </div>
             </section>
 
             <nav className="max-w-5xl mx-auto mt-8 px-4">
-                {/* ★ 修改：如果是 JF26 頁面，顯示「返回首頁」按鈕，否則顯示一般 Tabs */}
-                {activeTab === 'jf26' ? (
-                    <button 
-                        onClick={() => setActiveTab('wishing')}
-                        className="px-6 py-2 rounded font-black text-sm flex items-center gap-2 bg-white border-2 border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all shadow-sm"
-                    >
-                        <ArrowLeft size={18} /> 返回首頁
-                    </button>
-                ) : (
-                    <div className="bg-white p-2 rounded-lg shadow-sm border-2 border-slate-200 inline-flex gap-2 flex-wrap sm:flex-nowrap">
-                        {[
-                            { id: 'wishing', label: '許願池', icon: Heart },
-                            { id: 'active', label: '揪團中', icon: Zap }, 
-                            { id: 'completed', label: '已成團', icon: CheckCircle },
-                            { id: 'shipping', label: '國際運二補', icon: Plane },
-                            { id: 'closed', label: '已結案', icon: Archive }
-                        ].map(tab => (
-                            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 sm:px-6 py-2 rounded font-black text-sm flex items-center gap-2 transition-all flex-1 sm:flex-none justify-center border-2 ${activeTab === tab.id ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
-                                <tab.icon size={18} />{tab.label}
-                            </button>
-                        ))}
-                    </div>
-                )}
+                <div className="bg-white p-2 rounded-lg shadow-sm border-2 border-slate-200 inline-flex gap-2 flex-wrap sm:flex-nowrap">
+                    {[
+                        { id: 'wishing', label: '許願池', icon: Heart },
+                        { id: 'active', label: '揪團中', icon: Zap }, 
+                        { id: 'completed', label: '已成團', icon: CheckCircle },
+                        { id: 'shipping', label: '國際運二補', icon: Plane },
+                        { id: 'closed', label: '已結案', icon: Archive }
+                    ].map(tab => (
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 sm:px-6 py-2 rounded font-black text-sm flex items-center gap-2 transition-all flex-1 sm:flex-none justify-center border-2 ${activeTab === tab.id ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
+                            <tab.icon size={18} />{tab.label}
+                        </button>
+                    ))}
+                </div>
             </nav>
 
             <main className="max-w-5xl mx-auto px-4 py-8">
-                {/* ★ 修改：傳入 currentUser 給 JF26Page */}
-                {activeTab === 'jf26' && <JF26Page currentUser={appUser} />}
-
                 {activeTab === 'wishing' && (
                     <div>
                         <div className="flex justify-end mb-6">
@@ -816,48 +630,130 @@ export default function App() {
                 )}
             </main>
 
+            {/* Modals 保持不變，直接從 props 接收控制 */}
             <Modal isOpen={modalType === 'wish'} onClose={() => { setModalType(null); setEditingWish(null); }} title={editingWish ? "修改願望" : "我要許願"}>
                 <WishForm onSubmit={handleWishSubmit} onCancel={() => { setModalType(null); setEditingWish(null); }} initialData={editingWish} />
             </Modal>
-
             <Modal isOpen={modalType === 'createGroup'} onClose={() => { setModalType(null); setEditingGroup(null); }} title={editingGroup ? "編輯團務" : "發起新團務"}>
-                <GroupForm 
-                    onSubmit={editingGroup ? handleUpdateGroup : handleCreateGroup} 
-                    onCancel={() => { setModalType(null); setEditingGroup(null); }} 
-                    initialData={editingGroup} 
-                    submitLabel={editingGroup ? "儲存修改" : "發佈團購"}
-                />
+                <GroupForm onSubmit={editingGroup ? handleUpdateGroup : handleCreateGroup} onCancel={() => { setModalType(null); setEditingGroup(null); }} initialData={editingGroup} submitLabel={editingGroup ? "儲存修改" : "發佈團購"} />
             </Modal>
-
             <Modal isOpen={modalType === 'createPersonalRequest'} onClose={() => setModalType(null)} title="發布個人委託">
                 <PersonalRequestForm onSubmit={handleCreatePersonalRequest} onCancel={() => setModalType(null)} />
             </Modal>
-
             <Modal isOpen={modalType === 'secondPayment'} onClose={() => setModalType(null)} title="國際運二補試算">
-                {selectedGroup && (
-                    <SecondPaymentForm 
-                        group={selectedGroup} 
-                        orders={orders.filter(o => o.groupId === selectedGroup?.id)} 
-                        currentUser={appUser}
-                        onUpdate={handleUpdateSecondPayment} 
-                    />
-                )}
+                {selectedGroup && <SecondPaymentForm group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onUpdate={handleUpdateSecondPayment} />}
             </Modal>
-
             <Modal isOpen={modalType === 'changeName'} onClose={() => setModalType(null)} title="修改暱稱">
                 <ChangeNameForm currentUser={appUser} onSubmit={handleChangeName} onCancel={() => setModalType(null)} />
             </Modal>
-
             <Modal isOpen={modalType === 'changePwd'} onClose={() => setModalType(null)} title="修改密碼"><ChangePasswordForm onSubmit={handleChangePassword} /></Modal>
             <Modal isOpen={modalType === 'changeAvatar'} onClose={() => setModalType(null)} title="更改頭像"><ChangeAvatarForm currentUser={appUser} onSubmit={handleChangeAvatar} /></Modal>
-            
             <Modal isOpen={modalType === 'joinGroup'} onClose={() => setModalType(null)} title={`跟團：${selectedGroup?.title}`}>
                 {selectedGroup && <OrderForm group={selectedGroup} currentOrder={orders.find(o => o.groupId === selectedGroup?.id && o.userId === appUser?.id)} onSubmit={(items) => handleSubmitOrder(items, selectedGroup.id)} />}
             </Modal>
-
             <Modal isOpen={modalType === 'viewOrders'} onClose={() => setModalType(null)} title={`訂單明細：${selectedGroup?.title}`}>
                 {selectedGroup && <OrderSummary group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onEdit={selectedGroup?.status === '揪團中' ? () => setModalType('joinGroup') : null} />}
             </Modal>
         </div>
+    );
+}
+
+// 3. 真正的主入口 App (負責路由、Auth、User Data Fetching)
+export default function App() {
+    const [user, setUser] = useState(null);       
+    const [appUser, setAppUser] = useState(null); 
+    const [loading, setLoading] = useState(true);
+    const [usersData, setUsersData] = useState([]);
+
+    // 登出邏輯 (提升到 App 層)
+    const handleLogout = useCallback(() => {
+        setAppUser(null);
+        localStorage.removeItem('app_user_id');
+        setLoading(false); 
+    }, []);
+
+    // Firebase Auth 初始化
+    useEffect(() => {
+        const init = async () => {
+            try { if (!auth.currentUser) await signInAnonymously(auth); } 
+            catch (e) { console.error("Firebase 登入失敗", e); }
+        };
+        init();
+        return onAuthStateChanged(auth, (u) => { setUser(u); });
+    }, []);
+
+    // 抓取 User Data (因為 Login 頁面需要 usersData)
+    useEffect(() => {
+        if (!user) return;
+        const unsubUsers = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "users"), (snap) => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setUsersData(list);
+        });
+
+        // 嘗試從 localStorage 恢復登入
+        const storedUserId = localStorage.getItem('app_user_id');
+        let unsubAppUser = () => {};
+
+        if (storedUserId) {
+            unsubAppUser = onSnapshot(doc(db, "artifacts", "default-app-id", "public", "data", "users", storedUserId), (docSnap) => {
+                if (docSnap.exists()) {
+                    setAppUser({ id: docSnap.id, ...docSnap.data() });
+                    setLoading(false); 
+                } else { handleLogout(); }
+            }, () => handleLogout());
+        } else { setLoading(false); }
+
+        return () => { unsubUsers(); unsubAppUser(); };
+    }, [user, handleLogout]);
+
+    // 登入處理
+    const handleLogin = (incomingId, password) => {
+        const userId = (typeof incomingId === 'object' && incomingId !== null) ? incomingId.id : incomingId;
+        const targetUser = usersData.find(u => u.id === userId);
+        if (targetUser && String(targetUser.password).trim() === String(password).trim()) {
+            localStorage.setItem('app_user_id', targetUser.id);
+            setAppUser(targetUser); 
+            setLoading(false); 
+        } else { alert("密碼錯誤！"); }
+    };
+
+    if (loading) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-yellow-400">
+            <div className="flex items-center gap-2 mb-4 animate-bounce"><School size={80} className="text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]" /></div>
+            <p className="text-3xl font-black italic tracking-widest animate-pulse">PLUS ULTRA...</p>
+        </div>
+    );
+
+    return (
+        <HashRouter>
+            <Routes>
+                {/* 1. 登入頁：傳入 users 列表供選單使用 */}
+                <Route 
+                    path="/" 
+                    element={
+                        !appUser ? (
+                            <LoginScreen 
+                                users={usersData} 
+                                onLogin={handleLogin} 
+                            />
+                        ) : (
+                            <Navigate to="/home" replace />
+                        )
+                    } 
+                />
+
+                {/* 2. 首頁 (Dashboard) */}
+                <Route 
+                    path="/home" 
+                    element={appUser ? <Dashboard appUser={appUser} usersData={usersData} handleLogout={handleLogout} /> : <Navigate to="/" replace />} 
+                />
+
+                {/* 3. JF26頁 */}
+                <Route 
+                    path="/jf26" 
+                    element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} 
+                />
+            </Routes>
+        </HashRouter>
     );
 }
