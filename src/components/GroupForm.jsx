@@ -1,8 +1,6 @@
 // src/components/GroupForm.jsx
-import React, { useState, useEffect } from 'react';
-import { Image as ImageIcon, Upload, X, Sparkles, ArrowUp, ArrowDown, Link as LinkIcon, Package, Calendar, Edit3, Save, Tag } from 'lucide-react'; 
-
-const GEMINI_API_KEY = "AIzaSyDhfACb-gWpOEtmEgd-YJgB0gbGQKoeivE"; 
+import React, { useState } from 'react';
+import { Image as ImageIcon, Upload, X, ArrowUp, ArrowDown, Link as LinkIcon, Package, Calendar, Save, Tag } from 'lucide-react'; 
 
 const compressImage = (file) => {
     return new Promise((resolve) => {
@@ -42,10 +40,6 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, subm
     
     const [items, setItems] = useState(initialData?.items || [{ id: 1, name: '', spec: '', price: '', limit: '', image: '' }]);
 
-    const [showAiImport, setShowAiImport] = useState(false);
-    const [importText, setImportText] = useState('');
-    const [aiLoading, setAiLoading] = useState(false);
-
     const addItem = () => setItems([...items, { id: Date.now(), name: '', spec: '', price: '', limit: '', image: '' }]);
     const updateItem = (id, f, v) => setItems(items.map(i => i.id === id ? { ...i, [f]: v } : i));
     const removeItem = (id) => items.length > 1 ? setItems(items.filter(i => i.id !== id)) : setItems([{ id: Date.now(), name: '', spec: '', price: '', limit: '', image: '' }]); 
@@ -66,57 +60,6 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, subm
         }
     };
 
-    // --- Gemini AI ---
-    const callGemini = async (prompt) => {
-        if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('GQKoeivE')) { alert("請先填入正確的 Gemini API Key"); return null; }
-        try {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-                }
-            );
-            if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-            const data = await response.json();
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        } catch (error) {
-            console.error('Gemini Call Failed:', error);
-            alert("AI 呼叫失敗，請檢查 API Key 或網路");
-            return null;
-        }
-    };
-
-    const handleAiImport = async () => {
-        if (!importText) return;
-        setAiLoading(true);
-        const prompt = `Parse text to JSON array. Keys: "name", "spec", "price" (number), "limit" (number). Text: ${importText}`;
-        try {
-            let result = await callGemini(prompt);
-            if (result) {
-                result = result.replace(/```json/g, '').replace(/```/g, '').trim();
-                const parsedItems = JSON.parse(result);
-                if (Array.isArray(parsedItems)) {
-                    setItems(prev => [
-                        ...prev.filter(i => i.name || i.price),
-                        ...parsedItems.map(i => ({ 
-                            id: Date.now() + Math.random(), 
-                            name: i.name || '', 
-                            spec: i.spec || '', 
-                            price: i.price || '', 
-                            limit: i.limit || '',
-                            image: '' 
-                        }))
-                    ]);
-                    setShowAiImport(false);
-                    setImportText('');
-                } else alert("AI 無法辨識格式");
-            }
-        } catch (e) { console.error(e); alert("AI 解析失敗"); }
-        setAiLoading(false);
-    };
-
     const handleSubmit = () => {
         if (!title || !deadline) return alert("請填寫名稱和收單時間");
         const validItems = items.filter(i => i.name && i.price);
@@ -125,7 +68,7 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, subm
         
         onSubmit({ 
             title, 
-            type, // 回傳選擇的類型
+            type,
             images: [...manualUrls, ...localImages], 
             infoUrl, 
             deadline, 
@@ -150,7 +93,7 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, subm
                 />
             </div>
 
-            {/* ★ 修改：只保留 預購/現貨 兩個選項 (Goal 2) */}
+            {/* 類型選擇 */}
             <div className="flex flex-col gap-1">
                 <label className="text-sm font-black italic text-slate-900 mb-1 flex items-center gap-1">
                     <Tag size={16} /> 類型選擇
@@ -248,22 +191,8 @@ export default function GroupForm({ onSubmit, onCancel, initialData = null, subm
             <div className="bg-slate-100 p-4 rounded-xl border-2 border-slate-300">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <h4 className="font-black italic text-lg text-slate-900 transform -skew-x-3">{type === '個人委託' ? '委託清單 (ITEMS)' : '上架商品清單 (ITEMS)'}</h4>
-                    <div className="flex gap-2">
-                        <button type="button" onClick={() => setShowAiImport(!showAiImport)} className="text-xs px-3 py-1 flex items-center gap-1 bg-purple-600 text-white rounded font-black border-2 border-purple-800 hover:bg-purple-700 transition-all shadow-[1px_1px_0px_0px_rgba(76,29,149,1)]"><Sparkles size={14} /> AI 智慧匯入</button>
-                        <button type="button" onClick={addItem} className="text-sm font-black px-3 py-1 bg-yellow-400 text-slate-900 rounded border-2 border-slate-900 hover:bg-yellow-500 transition-all">+ 新增品項</button>
-                    </div>
+                    <button type="button" onClick={addItem} className="text-sm font-black px-3 py-1 bg-yellow-400 text-slate-900 rounded border-2 border-slate-900 hover:bg-yellow-500 transition-all">+ 新增品項</button>
                 </div>
-
-                {showAiImport && (
-                    <div className="mb-4 bg-white p-3 rounded-lg border-2 border-purple-600 animate-in fade-in slide-in-from-top-2 shadow-md">
-                        <label className="text-xs font-black text-purple-700 mb-1 block italic">貼上商品清單文字</label>
-                        <textarea className="w-full border-2 border-slate-900 rounded p-2 text-sm mb-2 h-24 focus:outline-none focus:ring-2 focus:ring-yellow-400" placeholder="請貼上商品清單..." value={importText} onChange={e => setImportText(e.target.value)} />
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setShowAiImport(false)} className="text-slate-600 text-xs hover:text-slate-900 px-2 font-bold">取消</button>
-                            <button type="button" onClick={handleAiImport} disabled={aiLoading || !importText} className="bg-purple-600 text-white text-xs px-3 py-1 rounded font-black hover:bg-purple-700 disabled:opacity-50 transition-all">{aiLoading ? "分析中..." : "開始匯入"}</button>
-                        </div>
-                    </div>
-                )}
                 
                 <div className="space-y-4">
                     {items.map((item, idx) => (

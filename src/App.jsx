@@ -1,7 +1,8 @@
 // src/App.jsx
 import { useState, useEffect, useMemo, useCallback } from "react"; 
-import { HashRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom'; // ★ 新增路由相關
-import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { HashRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
+// 引入 setDoc 修正公告儲存問題
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { 
     ShoppingBag, Heart, Users, CheckCircle, Package, Plus, LogOut, 
@@ -23,6 +24,7 @@ import Modal from "./components/Modal";
 import ImageSlider from "./components/ImageSlider";
 import RichTextEditor from "./components/RichTextEditor";
 import JF26Page from "./components/JF26Page"; 
+// ★ 已移除 SmartImportModal 的 import
 
 import { db, auth } from "./firebase";
 
@@ -31,9 +33,7 @@ const STATUS_STEPS = ["下單中", "已下單", "日本出貨", "抵達日倉", 
 const PAYMENT_STATUS_OPTIONS = ["商品金額", "二補金額", "商品+二補金額"];
 const MONTHLY_FEE = 90; 
 
-// ★ 1. 將原本 App 的主要內容拆出來變成 "Dashboard"
 function Dashboard({ appUser, usersData, handleLogout }) {
-    // === 這裡保留原本 App.jsx 的絕大部分邏輯 ===
     const [wishes, setWishes] = useState([]);
     const [groups, setGroups] = useState([]);
     const [orders, setOrders] = useState([]);
@@ -55,11 +55,11 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     const ITEMS_PER_PAGE = 15;
     const [currentPage, setCurrentPage] = useState(1);
+    
+    const [readStatusTick, setReadStatusTick] = useState(0);
 
     const selectedGroup = groups.find(g => g.id === selectedGroupId) || null;
-    const navigate = useNavigate(); // 用於跳轉
 
-    // 2. 數據監聽 (Wishes, Groups, Orders) - 移到 Dashboard 內部
     useEffect(() => {
         const unsubWishes = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), (snap) => setWishes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubGroups = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), (snap) => setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -72,7 +72,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
         return () => { unsubWishes(); unsubGroups(); unsubOrders(); unsubBulletin(); };
     }, []);
 
-    // ... (保留原本的自動清理、自動過期檢查邏輯) ...
     useEffect(() => {
         if (groups.length === 0) return;
         const checkAndCleanup = async () => {
@@ -106,8 +105,21 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd]);
 
-    // ... (保留原本所有的 Actions: handleChangePassword, handleWishSubmit 等等) ...
-    // 因篇幅關係，這裡直接沿用你原本的函式邏輯，不變動
+    const checkIsNew = (item, type) => {
+        const timeKey = item.updatedAt || item.createdAt;
+        if (!timeKey) return false;
+        const key = `read_${appUser.id}_${type}_${item.id}`;
+        const lastRead = localStorage.getItem(key);
+        if (!lastRead) return true;
+        return new Date(timeKey) > new Date(lastRead);
+    };
+
+    const markAsRead = (item, type) => {
+        const key = `read_${appUser.id}_${type}_${item.id}`;
+        localStorage.setItem(key, new Date().toISOString());
+        setReadStatusTick(t => t + 1);
+    };
+
     const handleChangePassword = async (newPwd) => {
         if (!appUser) return;
         await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { password: newPwd });
@@ -133,7 +145,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     const handleToggleMembership = async () => {
         if (!appUser) return;
-        // ... (邏輯同原版) ...
         if (appUser.isMember) {
             if (appUser.memberValidUntil) {
                 if (confirm("要恢復自動續訂嗎？\n您的會員資格將繼續保持。")) {
@@ -159,9 +170,9 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     const handleWishSubmit = async (data) => {
         try {
             if (editingWish) {
-                await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "wishes", editingWish.id), { ...data });
+                await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "wishes", editingWish.id), { ...data, updatedAt: new Date().toISOString() });
             } else {
-                await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), { ...data, authorName: appUser.name, authorId: appUser.id, createdAt: new Date().toISOString(), plusOnes: [] });
+                await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), { ...data, authorName: appUser.name, authorId: appUser.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), plusOnes: [] });
             }
             setModalType(null); setEditingWish(null);
         } catch (e) { console.error(e); alert("操作失敗"); }
@@ -179,6 +190,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     const handlePlusOne = async (wish) => {
         if (!appUser) return;
+        markAsRead(wish, 'wish');
         const currentPlusOnes = wish.plusOnes || [];
         const isPlussed = currentPlusOnes.includes(appUser.name);
         const newPlusOnes = isPlussed ? currentPlusOnes.filter(n => n !== appUser.name) : [...currentPlusOnes, appUser.name];
@@ -186,14 +198,13 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     };
 
     const handleCreateGroup = async (data) => {
-        await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { ...data, createdAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '商品金額' });
+        await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '商品金額' });
         setModalType(null);
     };
 
     const handleCreatePersonalRequest = async (data) => {
-        // ... (邏輯同原版) ...
         const groupData = {
-            title: `[個人委託] ${data.ipName}`, type: '個人委託', infoUrl: data.sourceUrl, status: '揪團中', createdBy: appUser.name, createdById: appUser.id, createdAt: new Date().toISOString(), exchangeRate: 0.21, shippingFee: 0, deadline: '個人委託',
+            title: `[個人委託] ${data.ipName}`, type: '個人委託', infoUrl: data.sourceUrl, status: '揪團中', createdBy: appUser.name, createdById: appUser.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), exchangeRate: 0.21, shippingFee: 0, deadline: '個人委託',
             items: data.items.map(i => ({ id: i.id, name: i.name, price: i.price, limit: i.quantity, image: '', spec: '' })), note: data.note, requestType: data.type, secondPayment: {}, paymentStatus: '商品金額'
         };
         try {
@@ -207,7 +218,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     const handleUpdateGroup = async (data) => {
         if (!editingGroup) return;
         try {
-            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", editingGroup.id), { ...data, status: editingGroup.status, createdAt: editingGroup.createdAt, exchangeRate: editingGroup.exchangeRate, shippingFee: editingGroup.shippingFee });
+            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", editingGroup.id), { ...data, updatedAt: new Date().toISOString(), status: editingGroup.status, createdAt: editingGroup.createdAt, exchangeRate: editingGroup.exchangeRate, shippingFee: editingGroup.shippingFee });
             setModalType(null); setEditingGroup(null); alert("團務資訊已更新！");
         } catch (e) { console.error("更新失敗", e); alert("更新失敗"); }
     };
@@ -247,9 +258,20 @@ function Dashboard({ appUser, usersData, handleLogout }) {
         await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id), { paymentStatus: newPaymentStatus });
     };
 
+    // 公告使用 setDoc + merge 修正消失問題
     const handleSaveBulletin = async () => {
-        try { await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), { content: tempBulletin }).catch(async () => {}); setBulletin(tempBulletin); setIsEditingBulletin(false); alert("公告已更新！Plus Ultra！"); } catch (e) { console.error("更新公告失敗", e); alert("更新失敗"); }
+        try {
+            await setDoc(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), { content: tempBulletin }, { merge: true });
+            setBulletin(tempBulletin);
+            setIsEditingBulletin(false);
+            alert("公告已更新！Plus Ultra！");
+        } catch (e) { 
+            console.error("更新公告失敗", e); 
+            alert("更新失敗"); 
+        }
     };
+
+    // ★ 已移除 handleSmartImport 函式
 
     const totalTWD = useMemo(() => {
         if (!orders || !groups || orders.length === 0 || !appUser) return 0;
@@ -258,7 +280,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
             const g = groups.find(g => g.id === order.groupId);
             if (!g) return acc;
             if (['已成團', '二補計算'].includes(g.status)) {
-                // ... (計算邏輯同原版) ...
                 const rate = Number(g.exchangeRate || 0);
                 const shippingFeeJPY = Number(g.shippingFee || 0); 
                 const itemsJPY = (order.items || []).reduce((sum, item) => sum + (Number(item.price||0) * Number(item.quantity||1)), 0);
@@ -333,7 +354,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                      : activeTab === 'closed' ? closedGroups 
                      : []; 
 
-    const listForPagination = targetList; // Dashboard 不需要 JF26 tab 了
+    const listForPagination = targetList;
     const totalPages = Math.ceil(listForPagination.length / ITEMS_PER_PAGE);
 
     const paginatedList = listForPagination.slice(
@@ -411,7 +432,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
             <section className="max-w-5xl mx-auto mt-6 px-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {/* 公告欄 (佔 3 欄) */}
+                    {/* 公告欄 */}
                     <div className="md:col-span-3 bg-white rounded-lg p-0 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] border-2 border-slate-900 relative overflow-hidden flex flex-col">
                         <div className="bg-yellow-400 border-b-2 border-slate-900 p-3 flex justify-between items-center">
                             <div className="flex items-center gap-2 text-slate-900 font-black text-lg italic transform -skew-x-6"><Megaphone size={24} className="fill-slate-900" /><h2>ACADEMY NEWS</h2></div>
@@ -432,7 +453,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                         </div>
                     </div>
 
-                    {/* ★ 改用 Link 或 navigate 跳轉到 /jf26 */}
+                    {/* JF26 專區 */}
                     <div className="md:col-span-1">
                         <Link
                             to="/jf26"
@@ -478,31 +499,44 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                             <button onClick={() => { setEditingWish(null); setModalType('wish'); }} className="px-6 py-2 bg-red-600 text-white border-2 border-red-800 rounded font-black hover:bg-red-700 flex items-center gap-2 shadow-[2px_2px_0px_0px_rgba(153,27,27,1)] active:translate-y-0.5 active:shadow-none transition-all italic"><Plus size={20} /> MAKE A WISH</button>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {wishes.map(wish => (
-                                <div key={wish.id} className="bg-white rounded-lg p-4 shadow-sm border-2 border-slate-200 hover:border-slate-900 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition-all flex flex-col h-full relative group">
-                                    <div className="mb-3 w-full aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden"><ImageSlider images={wish.images} /></div>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <h3 className="font-bold text-lg text-slate-900 line-clamp-2">{wish.title}</h3>
-                                            {(appUser?.id === wish.authorId || appUser?.name === ADMIN_USER) && (
-                                                <div className="flex gap-1">
-                                                    <button onClick={() => { setEditingWish(wish); setModalType('wish'); }} className="text-slate-400 hover:text-blue-600 p-1" title="編輯"><Edit3 size={16} /></button>
-                                                    <button onClick={() => handleDeleteWish(wish)} className="text-slate-400 hover:text-red-600 p-1" title="刪除"><Trash2 size={16} /></button>
-                                                </div>
-                                            )}
+                            {wishes.map(wish => {
+                                const isNew = checkIsNew(wish, 'wish');
+                                return (
+                                    <div 
+                                        key={wish.id} 
+                                        className="bg-white rounded-lg p-4 shadow-sm border-2 border-slate-200 hover:border-slate-900 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition-all flex flex-col h-full relative group"
+                                        onClick={() => markAsRead(wish, 'wish')}
+                                    >
+                                        {isNew && (
+                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white">
+                                                NEW!
+                                            </div>
+                                        )}
+
+                                        <div className="mb-3 w-full aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden"><ImageSlider images={wish.images} /></div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="font-bold text-lg text-slate-900 line-clamp-2">{wish.title}</h3>
+                                                {(appUser?.id === wish.authorId || appUser?.name === ADMIN_USER) && (
+                                                    <div className="flex gap-1">
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditingWish(wish); setModalType('wish'); }} className="text-slate-400 hover:text-blue-600 p-1" title="編輯"><Edit3 size={16} /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteWish(wish); }} className="text-slate-400 hover:text-red-600 p-1" title="刪除"><Trash2 size={16} /></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <span className="bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs px-2 py-1 rounded font-bold">BY: {wish.authorName}</span>
+                                                {wish.url && <a href={wish.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-blue-600 font-bold text-xs hover:underline truncate max-w-[120px] flex items-center gap-1"><ExternalLink size={10}/> Link</a>}
+                                            </div>
+                                            <p className="text-slate-600 text-sm mb-4 line-clamp-3 bg-slate-50 p-2 rounded border border-slate-100">{wish.note || "無補充說明"}</p>
                                         </div>
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <span className="bg-yellow-100 text-yellow-800 border border-yellow-200 text-xs px-2 py-1 rounded font-bold">BY: {wish.authorName}</span>
-                                            {wish.url && <a href={wish.url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold text-xs hover:underline truncate max-w-[120px] flex items-center gap-1"><ExternalLink size={10}/> Link</a>}
+                                        <div className="pt-4 border-t-2 border-slate-100 flex justify-between items-end mt-auto">
+                                            <div className="text-xs font-bold text-slate-400">{wish.plusOnes?.length > 0 && <span className="text-red-600 flex items-center gap-1"><Heart size={10} className="fill-red-600"/> {wish.plusOnes.length} 英雄集氣</span>}</div>
+                                            <button onClick={(e) => { e.stopPropagation(); handlePlusOne(wish); }} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-black border-2 transition-all ${wish.plusOnes?.includes(appUser?.name) ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}>+1</button>
                                         </div>
-                                        <p className="text-slate-600 text-sm mb-4 line-clamp-3 bg-slate-50 p-2 rounded border border-slate-100">{wish.note || "無補充說明"}</p>
                                     </div>
-                                    <div className="pt-4 border-t-2 border-slate-100 flex justify-between items-end mt-auto">
-                                        <div className="text-xs font-bold text-slate-400">{wish.plusOnes?.length > 0 && <span className="text-red-600 flex items-center gap-1"><Heart size={10} className="fill-red-600"/> {wish.plusOnes.length} 英雄集氣</span>}</div>
-                                        <button onClick={() => handlePlusOne(wish)} className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-black border-2 transition-all ${wish.plusOnes?.includes(appUser?.name) ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}>+1</button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                         {wishes.length === 0 && (
                             <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-300"><Star size={48} className="mb-3 opacity-50" /><p className="font-bold">還沒有願望... 成為第一個許願的英雄吧！</p></div>
@@ -528,6 +562,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
                         {activeTab === 'active' && (
                             <div className="flex justify-end mb-6 gap-2">
+                                {/* ★ 已移除 AI 按鈕 */}
                                 {appUser?.name === ADMIN_USER ? (
                                     <button onClick={() => { setEditingGroup(null); setModalType('createGroup'); }} className="px-6 py-2 bg-slate-900 text-white rounded border-2 border-slate-900 font-black hover:bg-slate-700 flex items-center gap-2 shadow-[4px_4px_0px_0px_#FACC15] active:translate-y-0.5 active:shadow-none transition-all italic"><Edit3 size={18} /> 發起團務</button>
                                 ) : (
@@ -543,8 +578,20 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {paginatedList.map(group => {
                                 const hasOrdered = !!orders.find(o => o.groupId === group.id && o.userId === appUser?.id);
+                                const isNew = activeTab === 'active' ? checkIsNew(group, 'group') : false;
+
                                 return (
-                                    <div key={group.id} className={`bg-white rounded-lg p-5 shadow-sm border-2 border-slate-900 flex flex-col relative overflow-hidden ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`}>
+                                    <div 
+                                        key={group.id} 
+                                        className={`bg-white rounded-lg p-5 shadow-sm border-2 border-slate-900 flex flex-col relative overflow-hidden ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`}
+                                        onClick={() => activeTab === 'active' && markAsRead(group, 'group')}
+                                    >
+                                        {isNew && (
+                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white">
+                                                NEW!
+                                            </div>
+                                        )}
+
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex flex-col gap-1">
                                                 {group.type === '現貨' ? (
@@ -558,8 +605,8 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                                             </div>
                                             {appUser?.name === ADMIN_USER && (
                                                 <div className="flex gap-1 ml-auto">
-                                                    <button onClick={() => { setEditingGroup(group); setModalType('createGroup'); }} className="text-slate-400 hover:text-blue-600 p-1" title="編輯團務"><Edit3 size={18} /></button>
-                                                    <button onClick={() => handleDeleteGroup(group)} className="text-slate-400 hover:text-red-600 p-1" title="刪除團務"><Trash2 size={18} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditingGroup(group); setModalType('createGroup'); }} className="text-slate-400 hover:text-blue-600 p-1" title="編輯團務"><Edit3 size={18} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group); }} className="text-slate-400 hover:text-red-600 p-1" title="刪除團務"><Trash2 size={18} /></button>
                                                 </div>
                                             )}
                                         </div>
@@ -576,7 +623,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
                                             <p className="flex justify-between border-b border-slate-100 pb-1"><span>品項數量</span><span>{group.items?.length || 0} 款</span></p>
                                             {group.infoUrl && (
-                                                <p className="flex justify-between border-b border-slate-100 pb-1"><span>官方資訊</span><a href={group.infoUrl} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline flex items-center gap-1"><ExternalLink size={12} /> Link</a></p>
+                                                <p className="flex justify-between border-b border-slate-100 pb-1"><span>官方資訊</span><a href={group.infoUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-blue-600 font-bold hover:underline flex items-center gap-1"><ExternalLink size={12} /> Link</a></p>
                                             )}
                                             {hasOrdered && activeTab === 'active' && <div className="mt-2 bg-green-100 text-green-700 border border-green-300 px-2 py-1 rounded text-center text-xs font-black transform -rotate-1">已參戰 (ORDERED)</div>}
                                         </div>
@@ -589,19 +636,19 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                                         )}
                                         <div className="flex gap-2 mt-auto">
                                             {activeTab === 'active' && !(appUser?.name === ADMIN_USER && group.type === '個人委託') && (
-                                                <button className={`flex-1 px-4 py-2 rounded font-black text-white border-2 transition-all italic ${hasOrdered ? 'bg-green-600 border-green-800 hover:bg-green-700' : 'bg-red-600 border-red-800 hover:bg-red-700'}`} onClick={() => { setSelectedGroupId(group.id); setModalType('joinGroup'); }}>{hasOrdered ? "修改訂單" : "我要跟團"}</button>
+                                                <button className={`flex-1 px-4 py-2 rounded font-black text-white border-2 transition-all italic ${hasOrdered ? 'bg-green-600 border-green-800 hover:bg-green-700' : 'bg-red-600 border-red-800 hover:bg-red-700'}`} onClick={(e) => { e.stopPropagation(); setSelectedGroupId(group.id); setModalType('joinGroup'); }}>{hasOrdered ? "修改訂單" : "我要跟團"}</button>
                                             )}
-                                            <button className={`px-3 py-2 rounded font-bold border-2 ${activeTab !== 'active' ? 'flex-1 bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200' : 'bg-white border-slate-300 text-slate-600 hover:border-slate-500'}`} onClick={() => { setSelectedGroupId(group.id); setModalType('viewOrders'); }}>查看明細</button>
+                                            <button className={`px-3 py-2 rounded font-bold border-2 ${activeTab !== 'active' ? 'flex-1 bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200' : 'bg-white border-slate-300 text-slate-600 hover:border-slate-500'}`} onClick={(e) => { e.stopPropagation(); setSelectedGroupId(group.id); setModalType('viewOrders'); }}>查看明細</button>
                                             
                                             {(activeTab === 'shipping' || activeTab === 'closed') && (
-                                                <button className="px-3 py-2 rounded font-bold border-2 bg-yellow-400 border-slate-900 text-slate-900 hover:bg-yellow-500" onClick={() => { setSelectedGroupId(group.id); setModalType('secondPayment'); }}>二補明細</button>
+                                                <button className="px-3 py-2 rounded font-bold border-2 bg-yellow-400 border-slate-900 text-slate-900 hover:bg-yellow-500" onClick={(e) => { e.stopPropagation(); setSelectedGroupId(group.id); setModalType('secondPayment'); }}>二補明細</button>
                                             )}
 
-                                            {appUser?.name === ADMIN_USER && activeTab === 'active' && <button onClick={() => handleCloseGroup(group)} className="px-3 py-2 rounded font-black bg-slate-900 text-white hover:bg-slate-700 border-2 border-slate-900">成團</button>}
+                                            {appUser?.name === ADMIN_USER && activeTab === 'active' && <button onClick={(e) => { e.stopPropagation(); handleCloseGroup(group); }} className="px-3 py-2 rounded font-black bg-slate-900 text-white hover:bg-slate-700 border-2 border-slate-900">成團</button>}
                                         </div>
                                         
                                         {(activeTab === 'completed' || activeTab === 'shipping' || activeTab === 'closed') && appUser?.name === ADMIN_USER && (
-                                            <div className="mt-3 pt-3 border-t-2 border-slate-100 space-y-2">
+                                            <div className="mt-3 pt-3 border-t-2 border-slate-100 space-y-2" onClick={e => e.stopPropagation()}>
                                                 <select className="w-full bg-slate-50 border-2 border-slate-200 text-sm rounded px-2 py-1 font-bold text-slate-700" value={group.trackingStatus || '下單中'} onChange={(e) => handleUpdateGroupStatus(group, e.target.value)}>{STATUS_STEPS.map(s => <option key={s} value={s}>{s}</option>)}</select>
                                                 
                                                 <div className="flex items-center gap-2 bg-yellow-50 p-1 rounded border border-yellow-200">
@@ -630,7 +677,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                 )}
             </main>
 
-            {/* Modals 保持不變，直接從 props 接收控制 */}
             <Modal isOpen={modalType === 'wish'} onClose={() => { setModalType(null); setEditingWish(null); }} title={editingWish ? "修改願望" : "我要許願"}>
                 <WishForm onSubmit={handleWishSubmit} onCancel={() => { setModalType(null); setEditingWish(null); }} initialData={editingWish} />
             </Modal>
@@ -654,25 +700,23 @@ function Dashboard({ appUser, usersData, handleLogout }) {
             <Modal isOpen={modalType === 'viewOrders'} onClose={() => setModalType(null)} title={`訂單明細：${selectedGroup?.title}`}>
                 {selectedGroup && <OrderSummary group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onEdit={selectedGroup?.status === '揪團中' ? () => setModalType('joinGroup') : null} />}
             </Modal>
+            {/* 已移除 SmartImportModal 元件的使用 */}
         </div>
     );
 }
 
-// 3. 真正的主入口 App (負責路由、Auth、User Data Fetching)
 export default function App() {
     const [user, setUser] = useState(null);       
     const [appUser, setAppUser] = useState(null); 
     const [loading, setLoading] = useState(true);
     const [usersData, setUsersData] = useState([]);
 
-    // 登出邏輯 (提升到 App 層)
     const handleLogout = useCallback(() => {
         setAppUser(null);
         localStorage.removeItem('app_user_id');
         setLoading(false); 
     }, []);
 
-    // Firebase Auth 初始化
     useEffect(() => {
         const init = async () => {
             try { if (!auth.currentUser) await signInAnonymously(auth); } 
@@ -682,7 +726,6 @@ export default function App() {
         return onAuthStateChanged(auth, (u) => { setUser(u); });
     }, []);
 
-    // 抓取 User Data (因為 Login 頁面需要 usersData)
     useEffect(() => {
         if (!user) return;
         const unsubUsers = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "users"), (snap) => {
@@ -690,7 +733,6 @@ export default function App() {
             setUsersData(list);
         });
 
-        // 嘗試從 localStorage 恢復登入
         const storedUserId = localStorage.getItem('app_user_id');
         let unsubAppUser = () => {};
 
@@ -706,7 +748,6 @@ export default function App() {
         return () => { unsubUsers(); unsubAppUser(); };
     }, [user, handleLogout]);
 
-    // 登入處理
     const handleLogin = (incomingId, password) => {
         const userId = (typeof incomingId === 'object' && incomingId !== null) ? incomingId.id : incomingId;
         const targetUser = usersData.find(u => u.id === userId);
@@ -727,32 +768,9 @@ export default function App() {
     return (
         <HashRouter>
             <Routes>
-                {/* 1. 登入頁：傳入 users 列表供選單使用 */}
-                <Route 
-                    path="/" 
-                    element={
-                        !appUser ? (
-                            <LoginScreen 
-                                users={usersData} 
-                                onLogin={handleLogin} 
-                            />
-                        ) : (
-                            <Navigate to="/home" replace />
-                        )
-                    } 
-                />
-
-                {/* 2. 首頁 (Dashboard) */}
-                <Route 
-                    path="/home" 
-                    element={appUser ? <Dashboard appUser={appUser} usersData={usersData} handleLogout={handleLogout} /> : <Navigate to="/" replace />} 
-                />
-
-                {/* 3. JF26頁 */}
-                <Route 
-                    path="/jf26" 
-                    element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} 
-                />
+                <Route path="/" element={!appUser ? <LoginScreen users={usersData} onLogin={handleLogin} /> : <Navigate to="/home" replace />} />
+                <Route path="/home" element={appUser ? <Dashboard appUser={appUser} usersData={usersData} handleLogout={handleLogout} /> : <Navigate to="/" replace />} />
+                <Route path="/jf26" element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} />
             </Routes>
         </HashRouter>
     );

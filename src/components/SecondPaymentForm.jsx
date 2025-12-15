@@ -1,6 +1,7 @@
 // src/components/SecondPaymentForm.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator, Package, Save, Plane, Info, Wallet } from 'lucide-react';
+import { Calculator, Package, Save, Plane, Info, Wallet, Download } from 'lucide-react'; // ★ 新增 Download
+import * as XLSX from 'xlsx'; // ★ 新增 xlsx
 
 const ADMIN_USER = "葉葉";
 const RATE_PER_KG = 250; // 每公斤費率
@@ -25,7 +26,7 @@ export default function SecondPaymentForm({ group, orders, currentUser, onUpdate
         orders.forEach(order => {
             uniqueUserIds.add(order.userId); 
             order.items.forEach(item => {
-                const w = parseFloat(weights[item.itemId] || 0);
+                const w = parseFloat(weights[item.id] || weights[item.itemId] || 0); // 相容兩種 ID 格式
                 totalProductWeight += w * item.quantity;
                 totalItemsCount += item.quantity;
             });
@@ -65,6 +66,49 @@ export default function SecondPaymentForm({ group, orders, currentUser, onUpdate
         });
     };
 
+    // ★ 新增：匯出 Excel 功能
+    const handleExportExcel = () => {
+        // 1. 整理每個人的數據 (合併同一人的多張訂單)
+        const userGroups = {};
+
+        orders.forEach(order => {
+            if (!userGroups[order.userId]) {
+                userGroups[order.userId] = {
+                    name: order.userName,
+                    items: [],
+                    totalCost: 0
+                };
+            }
+            
+            let orderShippingCost = 0;
+            order.items.forEach(item => {
+                const w = parseFloat(weights[item.id] || weights[item.itemId] || 0);
+                const itemShipping = (w * RATE_PER_KG) + calculations.boxCostPerItem;
+                orderShippingCost += itemShipping * item.quantity;
+                userGroups[order.userId].items.push(`${item.name} x${item.quantity}`);
+            });
+
+            userGroups[order.userId].totalCost += orderShippingCost;
+        });
+
+        // 2. 轉換成 Excel 格式 (加上低消分攤)
+        const excelData = Object.values(userGroups).map(user => ({
+            "買家": user.name,
+            "商品內容": user.items.join("\n"),
+            "二補運費 (TWD)": Math.round(user.totalCost + calculations.minChargePerPerson),
+            "備註": ""
+        }));
+
+        // 3. 建立並下載檔案
+        const ws = XLSX.utils.json_to_sheet(excelData);
+        // 設定欄寬
+        ws['!cols'] = [{ wch: 15 }, { wch: 40 }, { wch: 15 }, { wch: 20 }];
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "二補明細");
+        XLSX.writeFile(wb, `二補明細_${group.title}.xlsx`);
+    };
+
     return (
         <div className="space-y-6 font-sans text-slate-800">
             {/* 頂部資訊看板 */}
@@ -75,7 +119,6 @@ export default function SecondPaymentForm({ group, orders, currentUser, onUpdate
                 <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="bg-slate-800 p-2 rounded border border-slate-600 flex flex-col justify-center">
                         <span className="text-slate-400 block text-xs mb-1">總計費重 (Billing Weight)</span>
-                        {/* ★ 修改：使用 flex 讓大字和小字排在同一行，並對齊底部 */}
                         <div className="flex items-baseline gap-2">
                             <span className="text-xl font-mono font-bold text-white">{calculations.billingWeight} kg</span>
                             <span className="text-[10px] text-slate-500">(實重 {calculations.totalWeight} kg)</span>
@@ -192,7 +235,7 @@ export default function SecondPaymentForm({ group, orders, currentUser, onUpdate
                     {orders.map(order => {
                         let userTotalShipping = 0;
                         order.items.forEach(i => {
-                            const w = parseFloat(weights[i.itemId] || 0);
+                            const w = parseFloat(weights[i.id] || weights[i.itemId] || 0);
                             const itemShipping = (w * RATE_PER_KG) + calculations.boxCostPerItem;
                             userTotalShipping += itemShipping * i.quantity;
                         });
@@ -212,14 +255,22 @@ export default function SecondPaymentForm({ group, orders, currentUser, onUpdate
                 </div>
             </div>
 
-            {/* 只有管理員能儲存 */}
+            {/* 只有管理員能儲存與匯出 */}
             {isAdmin && (
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-end pt-2 gap-2">
+                    {/* ★ 新增：匯出 Excel 按鈕 */}
+                    <button 
+                        onClick={handleExportExcel}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded font-black border-2 border-green-800 hover:bg-green-700 shadow-[4px_4px_0px_0px_#166534] active:translate-y-0.5 active:shadow-none transition-all"
+                    >
+                        <Download size={18} /> 匯出 Excel
+                    </button>
+
                     <button 
                         onClick={handleSave}
                         className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-yellow-400 rounded font-black border-2 border-slate-900 hover:bg-slate-800 shadow-[4px_4px_0px_0px_#FACC15] active:translate-y-0.5 active:shadow-none transition-all"
                     >
-                        <Save size={18} /> 儲存重量設定
+                        <Save size={18} /> 儲存設定
                     </button>
                 </div>
             )}
