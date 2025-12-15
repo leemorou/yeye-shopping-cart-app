@@ -1,7 +1,6 @@
 // src/App.jsx
 import { useState, useEffect, useMemo, useCallback } from "react"; 
 import { HashRouter, Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
-// 引入 setDoc 修正公告儲存問題
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { 
@@ -24,7 +23,6 @@ import Modal from "./components/Modal";
 import ImageSlider from "./components/ImageSlider";
 import RichTextEditor from "./components/RichTextEditor";
 import JF26Page from "./components/JF26Page"; 
-// ★ 已移除 SmartImportModal 的 import
 
 import { db, auth } from "./firebase";
 
@@ -56,6 +54,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     const ITEMS_PER_PAGE = 15;
     const [currentPage, setCurrentPage] = useState(1);
     
+    // ★ 1. 加入強制重新渲染的 State，讓 NEW 點擊後馬上消失
     const [readStatusTick, setReadStatusTick] = useState(0);
 
     const selectedGroup = groups.find(g => g.id === selectedGroupId) || null;
@@ -72,6 +71,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
         return () => { unsubWishes(); unsubGroups(); unsubOrders(); unsubBulletin(); };
     }, []);
 
+    // ... (清理與過期檢查邏輯保持不變)
     useEffect(() => {
         if (groups.length === 0) return;
         const checkAndCleanup = async () => {
@@ -105,21 +105,29 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd]);
 
+    // ★ 2. 判斷是否為 NEW 的函式
     const checkIsNew = (item, type) => {
+        // 如果沒有時間戳記，就不顯示
         const timeKey = item.updatedAt || item.createdAt;
         if (!timeKey) return false;
+
+        // 每個使用者對每個項目都有獨立的已讀紀錄
         const key = `read_${appUser.id}_${type}_${item.id}`;
         const lastRead = localStorage.getItem(key);
+
+        // 如果從沒讀過，或者更新時間比上次讀取時間還新，就是 NEW
         if (!lastRead) return true;
         return new Date(timeKey) > new Date(lastRead);
     };
 
+    // ★ 3. 標記已讀的函式
     const markAsRead = (item, type) => {
         const key = `read_${appUser.id}_${type}_${item.id}`;
         localStorage.setItem(key, new Date().toISOString());
-        setReadStatusTick(t => t + 1);
+        setReadStatusTick(t => t + 1); // 觸發畫面更新
     };
 
+    // ... (其他 Actions 保持不變)
     const handleChangePassword = async (newPwd) => {
         if (!appUser) return;
         await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { password: newPwd });
@@ -190,7 +198,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     const handlePlusOne = async (wish) => {
         if (!appUser) return;
-        markAsRead(wish, 'wish');
+        markAsRead(wish, 'wish'); // +1 也視為已讀
         const currentPlusOnes = wish.plusOnes || [];
         const isPlussed = currentPlusOnes.includes(appUser.name);
         const newPlusOnes = isPlussed ? currentPlusOnes.filter(n => n !== appUser.name) : [...currentPlusOnes, appUser.name];
@@ -258,7 +266,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
         await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", group.id), { paymentStatus: newPaymentStatus });
     };
 
-    // 公告使用 setDoc + merge 修正消失問題
     const handleSaveBulletin = async () => {
         try {
             await setDoc(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), { content: tempBulletin }, { merge: true });
@@ -270,8 +277,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
             alert("更新失敗"); 
         }
     };
-
-    // ★ 已移除 handleSmartImport 函式
 
     const totalTWD = useMemo(() => {
         if (!orders || !groups || orders.length === 0 || !appUser) return 0;
@@ -500,13 +505,15 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {wishes.map(wish => {
+                                // ★ 4. 在這裡判斷許願池是否為 NEW
                                 const isNew = checkIsNew(wish, 'wish');
                                 return (
                                     <div 
                                         key={wish.id} 
                                         className="bg-white rounded-lg p-4 shadow-sm border-2 border-slate-200 hover:border-slate-900 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition-all flex flex-col h-full relative group"
-                                        onClick={() => markAsRead(wish, 'wish')}
+                                        onClick={() => markAsRead(wish, 'wish')} // ★ 點擊時標記已讀
                                     >
+                                        {/* ★ 5. 渲染 NEW 標籤 */}
                                         {isNew && (
                                             <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white">
                                                 NEW!
@@ -562,7 +569,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
                         {activeTab === 'active' && (
                             <div className="flex justify-end mb-6 gap-2">
-                                {/* ★ 已移除 AI 按鈕 */}
                                 {appUser?.name === ADMIN_USER ? (
                                     <button onClick={() => { setEditingGroup(null); setModalType('createGroup'); }} className="px-6 py-2 bg-slate-900 text-white rounded border-2 border-slate-900 font-black hover:bg-slate-700 flex items-center gap-2 shadow-[4px_4px_0px_0px_#FACC15] active:translate-y-0.5 active:shadow-none transition-all italic"><Edit3 size={18} /> 發起團務</button>
                                 ) : (
@@ -578,14 +584,16 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {paginatedList.map(group => {
                                 const hasOrdered = !!orders.find(o => o.groupId === group.id && o.userId === appUser?.id);
+                                // ★ 6. 在這裡判斷揪團卡片是否為 NEW (只在揪團中顯示)
                                 const isNew = activeTab === 'active' ? checkIsNew(group, 'group') : false;
 
                                 return (
                                     <div 
                                         key={group.id} 
                                         className={`bg-white rounded-lg p-5 shadow-sm border-2 border-slate-900 flex flex-col relative overflow-hidden ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`}
-                                        onClick={() => activeTab === 'active' && markAsRead(group, 'group')}
+                                        onClick={() => activeTab === 'active' && markAsRead(group, 'group')} // ★ 點擊時標記已讀
                                     >
+                                        {/* ★ 7. 渲染 NEW 標籤 */}
                                         {isNew && (
                                             <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white">
                                                 NEW!
@@ -700,7 +708,6 @@ function Dashboard({ appUser, usersData, handleLogout }) {
             <Modal isOpen={modalType === 'viewOrders'} onClose={() => setModalType(null)} title={`訂單明細：${selectedGroup?.title}`}>
                 {selectedGroup && <OrderSummary group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onEdit={selectedGroup?.status === '揪團中' ? () => setModalType('joinGroup') : null} />}
             </Modal>
-            {/* 已移除 SmartImportModal 元件的使用 */}
         </div>
     );
 }
