@@ -28,7 +28,18 @@ import { db, auth } from "./firebase";
 
 const ADMIN_USER = "葉葉";
 const STATUS_STEPS = ["下單中", "已下單", "日本出貨", "抵達日倉", "轉運中", "抵台", "二補計算", "已結案"];
-const PAYMENT_STATUS_OPTIONS = ["商品金額", "二補金額", "商品+二補金額"];
+
+// ★ 修改 1: 新增 "未收款" 選項
+const PAYMENT_STATUS_OPTIONS = [
+    "未收款",
+    "商品收款中", 
+    "商品已收款", 
+    "二補收款中", 
+    "二補已收款", 
+    "商品+二補收款中", 
+    "商品+二補已收款"
+];
+
 const MONTHLY_FEE = 90; 
 
 function Dashboard({ appUser, usersData, handleLogout }) {
@@ -196,14 +207,16 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     };
 
     const handleCreateGroup = async (data) => {
-        await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '商品金額' });
+        // ★ 修改 2: 預設值改為 "未收款"
+        await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '未收款' });
         setModalType(null);
     };
 
     const handleCreatePersonalRequest = async (data) => {
         const groupData = {
             title: `[個人委託] ${data.ipName}`, type: '個人委託', infoUrl: data.sourceUrl, status: '揪團中', createdBy: appUser.name, createdById: appUser.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), exchangeRate: 0.21, shippingFee: 0, deadline: '個人委託',
-            items: data.items.map(i => ({ id: i.id, name: i.name, price: i.price, limit: i.quantity, image: '', spec: '' })), note: data.note, requestType: data.type, secondPayment: {}, paymentStatus: '商品金額'
+            items: data.items.map(i => ({ id: i.id, name: i.name, price: i.price, limit: i.quantity, image: '', spec: '' })), note: data.note, requestType: data.type, secondPayment: {}, 
+            paymentStatus: '未收款' // ★ 修改 2: 預設值改為 "未收款"
         };
         try {
             const docRef = await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), groupData);
@@ -270,16 +283,34 @@ function Dashboard({ appUser, usersData, handleLogout }) {
 
     const totalTWD = useMemo(() => {
         if (!orders || !groups || orders.length === 0 || !appUser) return 0;
+
+        const groupTotalQuantities = {};
+        orders.forEach(o => {
+            if (!groupTotalQuantities[o.groupId]) groupTotalQuantities[o.groupId] = 0;
+            o.items.forEach(item => {
+                groupTotalQuantities[o.groupId] += (Number(item.quantity) || 0);
+            });
+        });
+
         return orders.reduce((acc, order) => {
             if (order.userId !== appUser.id) return acc;
-            const g = groups.find(g => g.id === order.groupId);
+            const g = groups.find(grp => grp.id === order.groupId);
             if (!g) return acc;
+            
             if (['已成團', '二補計算'].includes(g.status)) {
                 const rate = Number(g.exchangeRate || 0);
-                const shippingFeeJPY = Number(g.shippingFee || 0); 
-                const itemsJPY = (order.items || []).reduce((sum, item) => sum + (Number(item.price||0) * Number(item.quantity||1)), 0);
-                const itemTotalJPY = itemsJPY + shippingFeeJPY;
-                const itemTotalTWD = Math.round(itemTotalJPY * rate);
+                const fullShippingFee = Number(g.shippingFee || 0);
+                
+                const totalQtyInGroup = groupTotalQuantities[g.id] || 1; 
+                const shippingFeePerItem = fullShippingFee / totalQtyInGroup;
+
+                const currentOrderQty = (order.items || []).reduce((sum, i) => sum + (Number(i.quantity)||0), 0);
+                const currentOrderProductJPY = (order.items || []).reduce((sum, i) => sum + ((Number(i.price)||0) * (Number(i.quantity)||0)), 0);
+                
+                const currentOrderShippingJPY = shippingFeePerItem * currentOrderQty;
+                
+                const jpyFinalTotal = currentOrderProductJPY + currentOrderShippingJPY;
+                const itemTotalTWD = Math.round(jpyFinalTotal * rate);
 
                 let secondPayTWD = 0;
                 if (g.secondPayment) {
@@ -288,13 +319,11 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                     const boxWeight = parseFloat(g.secondPayment.boxWeight || 0);
                     const minChargeDiff = parseFloat(g.secondPayment.minChargeDiff || 0);
 
-                    const groupOrders = orders.filter(o => o.groupId === g.id);
-                    let groupTotalItems = 0;
-                    const uniqueUserCount = new Set(groupOrders.map(o => o.userId)).size;
-                    groupOrders.forEach(o => { o.items.forEach(i => groupTotalItems += i.quantity); });
-
                     const boxCost = boxWeight * RATE_PER_KG;
-                    const boxCostPerItem = groupTotalItems > 0 ? boxCost / groupTotalItems : 0;
+                    const boxCostPerItem = totalQtyInGroup > 0 ? boxCost / totalQtyInGroup : 0;
+                    
+                    const groupUserIds = new Set(orders.filter(o => o.groupId === g.id).map(o => o.userId));
+                    const uniqueUserCount = groupUserIds.size;
                     const minChargePerPerson = uniqueUserCount > 0 ? minChargeDiff / uniqueUserCount : 0;
 
                     order.items.forEach(i => {
@@ -302,17 +331,35 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                         const itemShipping = (w * RATE_PER_KG) + boxCostPerItem;
                         secondPayTWD += itemShipping * i.quantity;
                     });
+                    
                     secondPayTWD += minChargePerPerson;
                 }
-                const status = g.paymentStatus || '商品金額'; 
-                if (status === '商品金額') return acc + itemTotalTWD;
-                else if (status === '二補金額') return acc + Math.round(secondPayTWD);
-                else if (status === '商品+二補金額') return acc + itemTotalTWD + Math.round(secondPayTWD);
+                
+                // ★ 修改 3: 加入 "未收款" 的預設判斷 (如果沒有設定，預設也是未收款)
+                const status = g.paymentStatus || '未收款'; 
+                
+                if (status === '未收款') {
+                    // ★ 不計算任何費用
+                    return acc;
+                } else if (status === '商品收款中') {
+                    return acc + itemTotalTWD;
+                } else if (status === '商品已收款') {
+                    return acc;
+                } else if (status === '二補收款中') {
+                    return acc + Math.round(secondPayTWD);
+                } else if (status === '二補已收款') {
+                    return acc;
+                } else if (status === '商品+二補收款中') {
+                    return acc + itemTotalTWD + Math.round(secondPayTWD);
+                } else if (status === '商品+二補已收款') {
+                    return acc;
+                }
             }
             return acc;
         }, 0); 
     }, [orders, groups, appUser]); 
 
+    // ... (其餘部分保持不變)
     const { memberFeeSplit, isMember } = useMemo(() => {
         if (!appUser || !usersData.length) return { memberFeeSplit: 0, isMember: false };
         const memberCount = usersData.filter(u => u.isMember).length;
@@ -512,7 +559,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                                         onClick={() => markAsRead(wish, 'wish')}
                                     >
                                         {isNew && (
-                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white">
+                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none">
                                                 NEW!
                                             </div>
                                         )}
@@ -584,14 +631,12 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                                 const isNew = activeTab === 'active' ? checkIsNew(group, 'group') : false;
 
                                 return (
-                                    // ★ 這裡加上了 overflow-visible，並移除了可能導致隱藏的 class
                                     <div 
                                         key={group.id} 
                                         className={`bg-white rounded-lg p-5 shadow-sm border-2 border-slate-900 flex flex-col relative overflow-visible ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`}
                                         onClick={() => activeTab === 'active' && markAsRead(group, 'group')}
                                     >
                                         {isNew && (
-                                            // ★ 確保 z-index 足夠高
                                             <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none">
                                                 NEW!
                                             </div>
@@ -661,7 +706,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                                                     <span className="text-xs font-bold text-slate-500">收款：</span>
                                                     <select 
                                                         className="flex-1 bg-transparent text-xs font-black text-slate-900 focus:outline-none" 
-                                                        value={group.paymentStatus || '商品金額'} 
+                                                        value={group.paymentStatus || '未收款'} 
                                                         onChange={(e) => handleUpdatePaymentStatus(group, e.target.value)}
                                                     >
                                                         {PAYMENT_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
