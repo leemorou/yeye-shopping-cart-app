@@ -1,7 +1,6 @@
 // src/components/OrderForm.jsx
-
 import React, { useState } from 'react';
-import { Image as ImageIcon, Plus, Minus, Zap, CheckCircle, Save, Currency } from 'lucide-react';
+import { Image as ImageIcon, Plus, Minus, Zap, CheckCircle } from 'lucide-react';
 
 export default function OrderForm({ group, currentOrder, onSubmit }) {
     const [quantities, setQuantities] = useState(() => {
@@ -29,7 +28,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
     };
 
     const handleSubmit = () => {
-        // 1. 整理出數量 > 0 的商品
         const finalItems = group.items.map(item => ({ 
             itemId: item.id || item.name, 
             name: item.name, 
@@ -39,15 +37,12 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
             quantity: quantities[item.id] || 0 
         })).filter(i => i.quantity > 0);
 
-        // 2. ★ 修改邏輯：處理數量為 0 的情況
         if (finalItems.length === 0) {
-             // 如果是「修改訂單」且清空了所有商品 -> 視為取消訂單
              if (currentOrder) {
                  if (confirm("您將所有商品數量設為 0，確定要取消(刪除)此訂單嗎？")) {
-                     onSubmit([]); // 送出空陣列，代表刪除
+                     onSubmit([]); 
                  }
              } else {
-                 // 如果是「新訂單」且沒選商品 -> 提示錯誤
                  alert("請至少選擇一個品項！");
              }
              return;
@@ -56,21 +51,17 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
         onSubmit(finalItems);
     };
 
-    // 計算總額 (日幣)
     const totalJPY = group.items.reduce((sum, item) => {
         const price = Number(item.price) || 0;
         const qty = quantities[item.id] || 0;
         return sum + (price * qty);
     }, 0);
 
-    // 預計台幣 (包含運費)
     const shippingFeeJPY = Number(group.shippingFee || 0);
     const totalTWD = Math.round((totalJPY + shippingFeeJPY) * group.exchangeRate);
 
     return (
         <div className="space-y-4">
-            
-            {/* 提示區塊 */}
             <div className="bg-yellow-50 p-3 rounded-lg border-2 border-yellow-400 text-sm font-bold text-slate-800">
                 <p className="flex items-center gap-2">
                     <Zap size={16} className="text-red-600" />
@@ -83,7 +74,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
                 </ul>
             </div>
             
-            {/* 商品清單 */}
             <div className="p-4 bg-slate-50 rounded-lg border-2 border-slate-200">
                 <h4 className="font-black italic text-lg text-slate-900 border-b border-slate-300 pb-3 mb-3">任務裝備清單</h4>
                 
@@ -94,7 +84,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
 
                         return (
                             <div key={item.id} className="flex items-center justify-between border-b-2 border-slate-100 pb-4 last:border-0 bg-white p-3 rounded-lg shadow-sm">
-                                {/* 左側：圖片 + 資訊 */}
                                 <div className="flex items-start gap-3 flex-1 overflow-hidden">
                                     <div className="w-14 h-14 rounded-full bg-slate-100 border-2 border-slate-900 shrink-0 overflow-hidden flex items-center justify-center shadow-md">
                                         {item.image ? (
@@ -109,7 +98,7 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
                                         <div className="text-xs text-slate-500 flex items-center gap-2 mt-1 flex-wrap">
                                             {item.spec && <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">{item.spec}</span>}
                                             <span className="text-red-600 font-black flex items-center gap-0.5">
-                                                <Currency size={12} className="text-yellow-400 fill-red-600"/> ¥{item.price}
+                                                ¥{item.price}
                                             </span>
                                             {item.limit && <span className="text-xs text-slate-500 font-medium"> (上限: {item.limit})</span>}
                                             {isMaxed && <span className="text-red-600 font-black text-xs"> (MAX!)</span>}
@@ -117,7 +106,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
                                     </div>
                                 </div>
                                 
-                                {/* 右側：數量增減 */}
                                 <div className="flex items-center gap-1 pl-2 shrink-0">
                                     <button 
                                         type="button"
@@ -151,7 +139,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
                 </div>
             </div>
 
-            {/* 英雄結算區塊 */}
             <div className="bg-slate-800 text-white p-4 rounded-lg border-2 border-yellow-400 shadow-md">
                 <h4 className="text-xl font-black italic text-yellow-400 mb-2">英雄結算 (Summary)</h4>
                 
@@ -173,7 +160,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
                 </p>
             </div>
 
-            {/* 動作按鈕 */}
             <div className="pt-4 sticky bottom-0 bg-white/90 backdrop-blur-sm pb-2 border-t-2 border-yellow-400 mt-4">
                 <button 
                     type="button"
@@ -181,7 +167,6 @@ export default function OrderForm({ group, currentOrder, onSubmit }) {
                     onClick={handleSubmit}
                 >
                     <CheckCircle size={20} className="inline mr-2" /> 
-                    {/* ★ 動態按鈕文字：如果總額為 0 顯示取消，否則顯示提交 */}
                     {totalJPY === 0 && currentOrder ? '確認取消訂單' : (currentOrder ? '確認修改訂單' : '提交訂單 (PLUS ULTRA!)')}
                 </button>
             </div>
