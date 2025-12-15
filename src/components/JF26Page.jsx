@@ -1,6 +1,6 @@
 // src/components/JF26Page.jsx
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Calendar, Tag, AlertCircle, Search, Rocket, Plus, Edit3, Trash2, Save, X, Database, Clock, ShoppingCart, MapPin, CheckCircle, Truck, List } from 'lucide-react';
+import { ExternalLink, Tag, AlertCircle, Search, Rocket, Plus, Edit3, Trash2, X, Database, ShoppingCart, MapPin, CheckCircle, Truck, List, ArrowUp, ArrowDown } from 'lucide-react';
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -178,12 +178,15 @@ export default function JF26Page({ currentUser }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingIpsVendor, setViewingIpsVendor] = useState(null);
+    // 用於觸發畫面重新渲染以更新 "NEW" 標籤
+    const [readStatusTick, setReadStatusTick] = useState(0);
 
     const isAdmin = currentUser?.name === ADMIN_USER;
 
     useEffect(() => {
         const unsub = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors"), (snap) => {
             const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // 依照 order 排序
             setVendors(list.sort((a, b) => (a.order || 0) - (b.order || 0)));
         });
         return () => unsub();
@@ -199,20 +202,49 @@ export default function JF26Page({ currentUser }) {
 
     const handleDelete = async (id) => {
         if (!confirm("確定要刪除這張卡片嗎？")) return;
-        
-        // 1. 備份 (為了失敗還原)
         const previousVendors = [...vendors];
-
-        // 2. 樂觀更新：先從畫面移除
         setVendors(prev => prev.filter(v => v.id !== id));
-
         try {
             await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors", id));
         } catch (e) { 
             console.error("刪除失敗", e); 
             alert("刪除失敗"); 
-            // 3. 失敗則還原
             setVendors(previousVendors);
+        }
+    };
+
+    // 處理排序 (上移/下移)
+    const handleMoveVendor = async (index, direction) => {
+        // direction: -1 (up), 1 (down)
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= vendors.length) return;
+
+        // 樂觀更新
+        const newVendors = [...vendors];
+        const temp = newVendors[index];
+        newVendors[index] = newVendors[targetIndex];
+        newVendors[targetIndex] = temp;
+        setVendors(newVendors);
+
+        try {
+            // 交換 order 值
+            const itemA = vendors[index];
+            const itemB = vendors[targetIndex];
+            // 確保有 order 值，若無則用當下時間
+            const orderA = itemA.order || Date.now();
+            const orderB = itemB.order || (Date.now() + 1);
+
+            const batch = writeBatch(db);
+            const refA = doc(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors", itemA.id);
+            const refB = doc(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors", itemB.id);
+
+            batch.update(refA, { order: orderB });
+            batch.update(refB, { order: orderA });
+            await batch.commit();
+        } catch (e) {
+            console.error("排序失敗", e);
+            alert("排序失敗");
+            // 失敗會由 onSnapshot 自動修正回原狀
         }
     };
 
@@ -222,11 +254,35 @@ export default function JF26Page({ currentUser }) {
             const batch = writeBatch(db);
             INITIAL_VENDORS.forEach((v, idx) => {
                 const docRef = doc(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors"));
-                batch.set(docRef, { ...v, order: idx, updatedAt: new Date().toISOString() });
+                // 匯入時給予初始時間與順序
+                batch.set(docRef, { 
+                    ...v, 
+                    order: idx, 
+                    updatedAt: new Date().toISOString() 
+                });
             });
             await batch.commit();
             alert("資料匯入成功！");
         } catch (e) { console.error("匯入失敗", e); alert("匯入失敗"); }
+    };
+
+    // 檢查是否顯示 "NEW" 標籤
+    const isVendorNew = (vendor) => {
+        if (!vendor.updatedAt) return false;
+        const lastReadKey = `jf26_read_${vendor.id}`;
+        const lastReadTime = localStorage.getItem(lastReadKey);
+        
+        // 如果從未讀過，或者更新時間比讀取時間晚，則為 NEW
+        if (!lastReadTime) return true;
+        return new Date(vendor.updatedAt) > new Date(lastReadTime);
+    };
+
+    // 標記已讀 (當點擊連結時觸發)
+    const markAsRead = (vendorId) => {
+        const lastReadKey = `jf26_read_${vendorId}`;
+        localStorage.setItem(lastReadKey, new Date().toISOString());
+        // 強制觸發重新渲染以消除 NEW 標籤
+        setReadStatusTick(prev => prev + 1);
     };
 
     const getTagStyle = (tag) => {
@@ -252,7 +308,7 @@ export default function JF26Page({ currentUser }) {
                     <Rocket size={18} /> 攤商情報懶人包
                 </p>
 
-                {/* ★ 導航連結 (已補回) */}
+                {/* 導航連結 */}
                 <div className="mt-4 flex justify-center gap-4 text-sm font-bold text-slate-500">
                     <a href="https://www.jumpfesta.com/maker/" target="_blank" rel="noreferrer" className="hover:text-slate-900 border-b-2 border-transparent hover:border-yellow-400 transition-colors flex items-center gap-1">
                         JF26 攤商資訊 <ExternalLink size={12}/>
@@ -263,56 +319,88 @@ export default function JF26Page({ currentUser }) {
                     </a>
                 </div>
                 
-                {isAdmin && (
-                    <div className="absolute right-0 top-0 flex gap-2">
-                        {vendors.length === 0 && (
-                            <button onClick={handleInitData} className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded hover:bg-blue-200 flex items-center gap-1 font-bold">
-                                <Database size={12} /> 匯入
-                            </button>
-                        )}
-                        <button onClick={() => { setEditingVendor(null); setIsModalOpen(true); }} className="bg-slate-900 text-yellow-400 px-4 py-2 rounded-lg font-black shadow-md hover:bg-slate-700 flex items-center gap-2 text-sm"><Plus size={16} /> 新增卡片</button>
+                {/* 初始匯入按鈕 (僅限管理員且無資料時顯示) */}
+                {isAdmin && vendors.length === 0 && (
+                    <div className="absolute right-0 top-0">
+                         <button onClick={handleInitData} className="text-xs bg-blue-100 text-blue-600 px-3 py-1 rounded hover:bg-blue-200 flex items-center gap-1 font-bold">
+                            <Database size={12} /> 匯入
+                        </button>
                     </div>
                 )}
             </div>
 
-                        {/* ★ 修改：搜尋欄 */}
-            <div className="max-w-md mx-auto mb-8">
-                <div className="flex items-center w-full h-12 rounded-full border-2 border-slate-300 bg-white shadow-sm transition-all focus-within:border-slate-900 focus-within:ring-4 focus-within:ring-yellow-400/50">
-                    <Search className="ml-4 text-slate-400 shrink-0" size={20} />
-                    {/* 在這裡加入 border-none 和 focus:ring-0 */}
+            {/* 搜尋欄 & 新增按鈕區 */}
+            <div className="max-w-md mx-auto mb-8 flex flex-col gap-3 px-4">
+                <div className="flex items-center w-full h-12 rounded-full border-2 border-slate-300 bg-white shadow-sm transition-all focus-within:border-slate-900 focus-within:ring-4 focus-within:ring-yellow-400/50 overflow-hidden">
+                    <div className="pl-4 pr-2 flex items-center justify-center text-slate-400">
+                        <Search size={20} />
+                    </div>
                     <input 
                         type="text" 
                         placeholder="搜尋攤商名稱 或 IP..." 
-                        className="w-full h-full px-3 text-slate-700 font-bold placeholder:font-normal outline-none border-none focus:ring-0 bg-transparent rounded-r-full" 
+                        className="w-full h-full bg-transparent border-none outline-none text-slate-700 font-bold placeholder:font-normal focus:ring-0" 
                         value={searchTerm} 
                         onChange={e => setSearchTerm(e.target.value)} 
                     />
                 </div>
+                
+                {/* ★ 需求1: 新增按鈕移到搜尋欄下方 */}
+                {isAdmin && (
+                    <button 
+                        onClick={() => { setEditingVendor(null); setIsModalOpen(true); }} 
+                        className="w-full bg-slate-900 text-yellow-400 py-3 rounded-lg font-black shadow-md hover:bg-slate-800 flex items-center justify-center gap-2 text-sm active:scale-[0.98] transition-transform"
+                    >
+                        <Plus size={18} /> 新增攤商卡片
+                    </button>
+                )}
             </div>
 
             {/* 卡片網格 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredVendors.map(vendor => {
+                {filteredVendors.map((vendor, index) => {
                     const productList = Array.isArray(vendor.products) ? vendor.products : [];
                     const showEllipsis = productList.length > IP_LIMIT;
                     const displayedProducts = showEllipsis ? productList.slice(0, IP_LIMIT) : productList;
+                    const isNew = isVendorNew(vendor);
 
                     return (
                         <div key={vendor.id} className="bg-white rounded-xl border-4 border-slate-900 p-5 shadow-[6px_6px_0px_0px_#FACC15] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_#FACC15] transition-all duration-200 flex flex-col relative group">
                             
                             {/* 裝飾釘子 */}
                             <div className="absolute top-3 right-3 w-3 h-3 rounded-full bg-slate-200 border-2 border-slate-400 z-10"></div>
-
-                            {/* 管理員按鈕 */}
-                            {isAdmin && (
-                                <div className="absolute top-2 right-8 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                                    <button onClick={() => { setEditingVendor(vendor); setIsModalOpen(true); }} className="p-1.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 border border-blue-300"><Edit3 size={14} /></button>
-                                    <button onClick={() => handleDelete(vendor.id)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 border border-red-300"><Trash2 size={14} /></button>
+                            
+                            {/* ★ 需求4: NEW 標籤 (左上角) */}
+                            {isNew && (
+                                <div className="absolute -top-3 -left-3 bg-red-500 text-white text-xs font-black px-2 py-1 rounded shadow-md transform -rotate-12 z-20 border-2 border-white">
+                                    NEW!
                                 </div>
                             )}
 
-                            <div className="flex justify-between items-start mb-3 pr-6">
-                                <h3 className="font-black text-xl text-slate-900 leading-tight">{vendor.name}</h3>
+                            {/* 標題與管理按鈕區 */}
+                            <div className="flex justify-between items-start mb-3 pr-4">
+                                <h3 className="font-black text-xl text-slate-900 leading-tight pt-1">{vendor.name}</h3>
+                                
+                                {/* ★ 需求2 & 3: 手機版管理按鈕 (編輯/刪除/排序) 直接顯示在標題旁 */}
+                                {isAdmin && (
+                                    <div className="flex flex-col gap-1 ml-2 shrink-0">
+                                        <div className="flex gap-1">
+                                            <button onClick={() => { setEditingVendor(vendor); setIsModalOpen(true); }} className="p-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 border border-blue-200" title="編輯">
+                                                <Edit3 size={14} />
+                                            </button>
+                                            <button onClick={() => handleDelete(vendor.id)} className="p-1 bg-red-50 text-red-600 rounded hover:bg-red-100 border border-red-200" title="刪除">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button onClick={() => handleMoveVendor(index, -1)} disabled={index === 0} className="p-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 border border-slate-300 disabled:opacity-30" title="上移">
+                                                <ArrowUp size={14} />
+                                            </button>
+                                            <button onClick={() => handleMoveVendor(index, 1)} disabled={index === vendors.length - 1} className="p-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 border border-slate-300 disabled:opacity-30" title="下移">
+                                                <ArrowDown size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Tags */}
@@ -341,7 +429,10 @@ export default function JF26Page({ currentUser }) {
                                         ))}
                                         {showEllipsis && (
                                             <button 
-                                                onClick={() => setViewingIpsVendor(vendor)}
+                                                onClick={() => {
+                                                    setViewingIpsVendor(vendor);
+                                                    markAsRead(vendor.id); // 點擊查看更多也算已讀
+                                                }}
                                                 className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-1.5 rounded shadow-sm border border-slate-300 hover:bg-slate-300 transition-colors cursor-pointer flex items-center gap-1"
                                             >
                                                 <List size={12}/> ... (點擊看全部 {productList.length} 個)
@@ -385,23 +476,21 @@ export default function JF26Page({ currentUser }) {
 
                             {/* Buttons Footer */}
                             <div className="mt-5 space-y-3">
-                                {/* 事前/事後購買 */}
                                 <div className="flex gap-2">
                                     {vendor.preOrder?.url && (
-                                        <a href={vendor.preOrder.url} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-yellow-400 text-slate-900 text-center font-bold rounded border-2 border-yellow-500 hover:bg-yellow-300 transition-colors flex items-center justify-center gap-1 text-xs shadow-[2px_2px_0px_0px_#b45309] active:translate-y-0.5 active:shadow-none">
+                                        <a href={vendor.preOrder.url} onClick={() => markAsRead(vendor.id)} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-yellow-400 text-slate-900 text-center font-bold rounded border-2 border-yellow-500 hover:bg-yellow-300 transition-colors flex items-center justify-center gap-1 text-xs shadow-[2px_2px_0px_0px_#b45309] active:translate-y-0.5 active:shadow-none">
                                             <ShoppingCart size={14} /> 事前受注
                                         </a>
                                     )}
                                     {vendor.postOrder?.url && (
-                                        <a href={vendor.postOrder.url} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-blue-100 text-blue-700 text-center font-bold rounded border-2 border-blue-200 hover:bg-blue-200 transition-colors flex items-center justify-center gap-1 text-xs shadow-[2px_2px_0px_0px_#bfdbfe] active:translate-y-0.5 active:shadow-none">
+                                        <a href={vendor.postOrder.url} onClick={() => markAsRead(vendor.id)} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-blue-100 text-blue-700 text-center font-bold rounded border-2 border-blue-200 hover:bg-blue-200 transition-colors flex items-center justify-center gap-1 text-xs shadow-[2px_2px_0px_0px_#bfdbfe] active:translate-y-0.5 active:shadow-none">
                                             <Truck size={14} /> 事後通販
                                         </a>
                                     )}
                                 </div>
 
-                                {/* 主要連結 */}
                                 {vendor.mainUrl && (
-                                    <a href={vendor.mainUrl} target="_blank" rel="noreferrer" className="block w-full py-2 bg-slate-100 text-slate-700 text-center font-bold rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm border-2 border-slate-200">
+                                    <a href={vendor.mainUrl} onClick={() => markAsRead(vendor.id)} target="_blank" rel="noreferrer" className="block w-full py-2 bg-slate-100 text-slate-700 text-center font-bold rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm border-2 border-slate-200">
                                         <ExternalLink size={16} /> 攤商/活動官網
                                     </a>
                                 )}
@@ -471,10 +560,18 @@ export default function JF26Page({ currentUser }) {
                                 onSubmit={async (data) => {
                                     try {
                                         if (editingVendor) {
-                                            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors", editingVendor.id), { ...data, updatedAt: new Date().toISOString() });
+                                            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors", editingVendor.id), { 
+                                                ...data, 
+                                                updatedAt: new Date().toISOString() // 編輯時更新時間，觸發 NEW 標籤
+                                            });
                                             alert("更新成功！");
                                         } else {
-                                            await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors"), { ...data, order: Date.now(), createdAt: new Date().toISOString() });
+                                            await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors"), { 
+                                                ...data, 
+                                                order: Date.now(), 
+                                                updatedAt: new Date().toISOString(), // 新增時設定時間
+                                                createdAt: new Date().toISOString() 
+                                            });
                                             alert("新增成功！");
                                         }
                                         setIsModalOpen(false);
@@ -490,7 +587,7 @@ export default function JF26Page({ currentUser }) {
     );
 }
 
-// 編輯表單 (保持不變)
+// 編輯表單
 function VendorForm({ initialData, onSubmit, onCancel }) {
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
