@@ -849,10 +849,10 @@ function JCSLotteryTab({ currentUser, isAdmin }) {
 // ============================================================================
 function JSOrderForm({ initialData, onSubmit, onCancel }) {
     const [data, setData] = useState({ 
-        buyer: initialData?.buyer || '', 
-        items: initialData?.items || '', 
-        amount: initialData?.amount || 0 
-    });
+    buyer: initialData?.buyer || '', 
+    items: initialData?.items || '', 
+    amount: initialData?.amount || 0 
+});
     
     // 定義樣式
     const inputClass = "w-full border-2 border-slate-300 rounded p-2 text-sm font-bold focus:border-slate-900 focus:ring-0 outline-none";

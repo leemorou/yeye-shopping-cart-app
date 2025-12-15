@@ -23,13 +23,15 @@ import Modal from "./components/Modal";
 import ImageSlider from "./components/ImageSlider";
 import RichTextEditor from "./components/RichTextEditor";
 import JF26Page from "./components/JF26Page"; 
+// ★ 引入剛剛建立的播放器
+import MusicPlayer from './components/MusicPlayer';
 
 import { db, auth } from "./firebase";
 
 const ADMIN_USER = "葉葉";
 const STATUS_STEPS = ["下單中", "已下單", "日本出貨", "抵達日倉", "轉運中", "抵台", "二補計算", "已結案"];
 
-// ★ 修改 1: 新增 "未收款" 選項
+// 新增 "未收款" 選項
 const PAYMENT_STATUS_OPTIONS = [
     "未收款",
     "商品收款中", 
@@ -207,7 +209,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     };
 
     const handleCreateGroup = async (data) => {
-        // ★ 修改 2: 預設值改為 "未收款"
+        // 預設值改為 "未收款"
         await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: '揪團中', createdBy: appUser.name, exchangeRate: 0.21, shippingFee: 0, secondPayment: {}, paymentStatus: '未收款' });
         setModalType(null);
     };
@@ -216,7 +218,7 @@ function Dashboard({ appUser, usersData, handleLogout }) {
         const groupData = {
             title: `[個人委託] ${data.ipName}`, type: '個人委託', infoUrl: data.sourceUrl, status: '揪團中', createdBy: appUser.name, createdById: appUser.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), exchangeRate: 0.21, shippingFee: 0, deadline: '個人委託',
             items: data.items.map(i => ({ id: i.id, name: i.name, price: i.price, limit: i.quantity, image: '', spec: '' })), note: data.note, requestType: data.type, secondPayment: {}, 
-            paymentStatus: '未收款' // ★ 修改 2: 預設值改為 "未收款"
+            paymentStatus: '未收款'
         };
         try {
             const docRef = await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), groupData);
@@ -335,11 +337,9 @@ function Dashboard({ appUser, usersData, handleLogout }) {
                     secondPayTWD += minChargePerPerson;
                 }
                 
-                // ★ 修改 3: 加入 "未收款" 的預設判斷 (如果沒有設定，預設也是未收款)
                 const status = g.paymentStatus || '未收款'; 
                 
                 if (status === '未收款') {
-                    // ★ 不計算任何費用
                     return acc;
                 } else if (status === '商品收款中') {
                     return acc + itemTotalTWD;
@@ -391,10 +391,10 @@ function Dashboard({ appUser, usersData, handleLogout }) {
     const closedGroups = processGroups(['已結案'], 'releaseDate');
 
     const targetList = activeTab === 'active' ? activeGroups 
-                     : activeTab === 'completed' ? completedGroups 
-                     : activeTab === 'shipping' ? shippingGroups 
-                     : activeTab === 'closed' ? closedGroups 
-                     : []; 
+                      : activeTab === 'completed' ? completedGroups 
+                      : activeTab === 'shipping' ? shippingGroups 
+                      : activeTab === 'closed' ? closedGroups 
+                      : []; 
 
     const listForPagination = targetList;
     const totalPages = Math.ceil(listForPagination.length / ITEMS_PER_PAGE);
@@ -816,11 +816,19 @@ export default function App() {
 
     return (
         <HashRouter>
-            <Routes>
-                <Route path="/" element={!appUser ? <LoginScreen users={usersData} onLogin={handleLogin} /> : <Navigate to="/home" replace />} />
-                <Route path="/home" element={appUser ? <Dashboard appUser={appUser} usersData={usersData} handleLogout={handleLogout} /> : <Navigate to="/" replace />} />
-                <Route path="/jf26" element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} />
-            </Routes>
+            <div className="relative min-h-screen">
+                {/* ★ 修改點：加上 {appUser && ...} 
+                   這樣只有在登入成功後，播放器才會出現。
+                   且因為放在 Routes 外層，切換頁面時音樂不會中斷。
+                */}
+                {appUser && <MusicPlayer />}
+
+                <Routes>
+                    <Route path="/" element={!appUser ? <LoginScreen users={usersData} onLogin={handleLogin} /> : <Navigate to="/home" replace />} />
+                    <Route path="/home" element={appUser ? <Dashboard appUser={appUser} usersData={usersData} handleLogout={handleLogout} /> : <Navigate to="/" replace />} />
+                    <Route path="/jf26" element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} />
+                </Routes>
+            </div>
         </HashRouter>
     );
 }
