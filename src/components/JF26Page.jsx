@@ -4,7 +4,7 @@ import {
     ExternalLink, Tag, AlertCircle, Search, Rocket, Plus, Edit3, Trash2, X, 
     Database, ShoppingCart, MapPin, Truck, List, ArrowUp, ArrowDown, Home, 
     Crown, LogOut, Camera, Key, Calendar, Clock, CheckCircle, ArrowLeft,
-    Ticket, DollarSign, Package, HelpCircle, Clock3, // ★ 這裡補上了 Clock3
+    Ticket, DollarSign, Package, HelpCircle, Clock3,
     ZoomIn, ZoomOut, RotateCcw, RefreshCcw, Save, 
     Calculator, FileText, CheckSquare, Square, Truck as TruckIcon, PackageCheck, AlertTriangle
 } from 'lucide-react';
@@ -26,7 +26,7 @@ import JSPreOrderTab from './JSPreOrderTab';
 
 const ADMIN_USER = "葉葉";
 
-// ★ 使用者 ID 與 訂單暱稱 的對照表
+// 使用者 ID 與 訂單暱稱 的對照表
 const USER_MAPPING = {
     "titi": "踢",
     "xiaomei": "玫",
@@ -36,7 +36,7 @@ const USER_MAPPING = {
     "Sjie": "S姐",
     "qiaoyu": "魚",
     "teacher": "澄",
-    "ann": "安", // ★ 這裡設定好了
+    "ann": "安",
     "Aurora": "Aurora"
 };
 
@@ -54,7 +54,6 @@ export default function JF26Page({ currentUser }) {
     useEffect(() => {
         if (!currentUser?.id) return;
 
-        // 取得當前登入者的中文暱稱
         const myOrderName = USER_MAPPING[currentUser.id] || currentUser.name;
         
         let jsTotal = 0;
@@ -85,8 +84,9 @@ export default function JF26Page({ currentUser }) {
 
         // B. 監聽 JCS 抽選
         const unsubJCS = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_jcs_orders"), (snap) => {
-            let tempJcsTotal = 0;
-            jcsTotal = tempJcsTotal;
+            // 這裡暫時沒有實作 JCS 的個人金額計算邏輯，預留位置
+            // let tempJcsTotal = ...
+            jcsTotal = 0; 
             setMyTotalBill(jsTotal + jcsTotal);
         });
 
@@ -152,11 +152,7 @@ export default function JF26Page({ currentUser }) {
         <div className="min-h-screen bg-slate-50 font-sans pb-20 selection:bg-yellow-400 selection:text-black">
            {/* Header */}
             <header className="sticky top-0 z-30 bg-slate-900 border-b-4 border-yellow-400 px-4 py-3 shadow-md">
-                {/* 外層容器：手機版 flex-col (垂直)，電腦版 flex-row (水平) */}
                 <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
-                    
-                    {/* 第一列 (左側)：返回按鈕 + 標題 */}
-                    {/* w-full 讓它在手機版佔滿第一列 */}
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                         <Link to="/home" className="flex items-center gap-2 bg-yellow-400 px-4 py-1.5 rounded transform -skew-x-12 border-2 border-yellow-600 hover:scale-105 transition-transform group">
                             <ArrowLeft size={20} className="text-slate-900 transform skew-x-12 group-hover:-translate-x-1 transition-transform" strokeWidth={3} />
@@ -167,51 +163,45 @@ export default function JF26Page({ currentUser }) {
                         </h1>
                     </div>
                     
-                    {/* 第二列 (右側)：Widget + 名字 + 頭像選單 */}
-                    {/* w-full 讓它在手機版佔滿第二列，justify-end 讓內容靠右對齊 */}
                     <div className="flex items-center justify-end gap-2 sm:gap-4 w-full sm:w-auto">
-                        
-                        {/* Widget */}
                         {currentUser && (
                             <BillWidget amount={myTotalBill} />
                         )}
                         
-                        {/* 名字區塊 (維持原本設定：手機版隱藏，電腦版顯示) */}
                         <div className="text-right hidden sm:block">
                             <p className="text-xs text-slate-400">HERO NAME</p>
                             <p className="font-bold text-white tracking-wide">{currentUser?.name}</p>
                         </div>
 
-                        {/* 頭像與下拉選單 */}
                         <div className="relative">
                             <button onClick={() => setMenuOpen(!menuOpen)} className={`w-10 h-10 rounded-full bg-slate-800 border-2 ${isMember ? 'border-purple-500' : 'border-yellow-400'} shadow-lg overflow-hidden hover:scale-105 transition-all relative`}>
                                 <img src={currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.name}`} alt="avatar" className="w-full h-full object-cover" />
                                 {isMember && (
                                     <div className="absolute -top-1 -right-1 bg-purple-600 rounded-full p-0.5 border border-white">
-                                        <Crown size={8} className="text-white fill-white" />
+                                            <Crown size={8} className="text-white fill-white" />
                                     </div>
                                 )}
                             </button>
                             
                             {menuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border-2 border-slate-900 py-1 z-50 animate-in fade-in slide-in-from-top-2">
-                                        <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-xs font-black text-slate-500 flex items-center gap-1">
-                                                    <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
-                                                    PLUS 會員
-                                                </span>
-                                                {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
+                                            <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="text-xs font-black text-slate-500 flex items-center gap-1">
+                                                        <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
+                                                        PLUS 會員
+                                                    </span>
+                                                    {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
+                                                </div>
+                                                <button 
+                                                    onClick={handleToggleMembership}
+                                                    className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && currentUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
+                                                >
+                                                    {isMember 
+                                                        ? (currentUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
+                                                        : "訂閱會員 (NT$90/月均分)"}
+                                                </button>
                                             </div>
-                                            <button 
-                                                onClick={handleToggleMembership}
-                                                className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && currentUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
-                                            >
-                                                {isMember 
-                                                    ? (currentUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
-                                                    : "訂閱會員 (NT$90/月均分)"}
-                                            </button>
-                                        </div>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeName'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Tag size={16} /> 修改暱稱</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeAvatar'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Camera size={16} /> 更換英雄頭像</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changePwd'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Key size={16} /> 修改密碼</button>
@@ -264,32 +254,21 @@ export default function JF26Page({ currentUser }) {
                             { id: 'jcs_lottery', label: 'JCS 抽選', icon: Ticket }
                         ].map((tab) => {
                             const Icon = tab.icon;
-                            const isActive = currentTab === tab.id; // 注意：JF26Page 這裡是用 currentTab
+                            const isActive = currentTab === tab.id;
 
                             return (
                                 <button 
                                     key={tab.id} 
                                     onClick={() => setCurrentTab(tab.id)} 
                                     className={`
-                                        flex-1                       /* 讓每個按鈕寬度平均 */
-                                        flex flex-col                /* 關鍵：垂直排列 (上圖下文) */
-                                        items-center justify-center 
-                                        gap-1                        /* 圖示跟文字的距離 */
-                                        py-2 px-0.5 sm:px-4          /* 調整內距 */
-                                        rounded 
-                                        font-black 
-                                        transition-all 
-                                        border-2 
+                                        flex-1 flex flex-col items-center justify-center gap-1 py-2 px-0.5 sm:px-4 rounded font-black transition-all border-2 
                                         ${isActive 
                                             ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' 
                                             : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                                         }
                                     `}
                                 >
-                                    {/* 圖示 */}
                                     <Icon size={20} className={isActive ? "animate-pulse" : ""} />
-                                    
-                                    {/* 文字：手機版設為 11px 避免過大 */}
                                     <span className="text-[11px] sm:text-sm whitespace-nowrap">
                                         {tab.label}
                                     </span>
@@ -298,6 +277,7 @@ export default function JF26Page({ currentUser }) {
                         })}
                     </div>
                 </nav>
+
                 {/* 內容區塊渲染 */}
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
                     {currentTab === 'vendors' && (
@@ -352,23 +332,6 @@ export default function JF26Page({ currentUser }) {
 // 子元件定義 
 // ============================================================================
 
-function TabButton({ id, label, icon: Icon, active, onClick }) {
-    return (
-        <button 
-            onClick={() => onClick(id)}
-            className={`
-                px-4 py-2 rounded-lg text-sm font-black flex items-center gap-2 transition-all duration-200
-                ${active 
-                    ? 'bg-slate-900 text-yellow-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]' 
-                    : 'text-slate-500 hover:bg-white hover:text-slate-900'
-                }
-            `}
-        >
-            <Icon size={16} strokeWidth={3} /> {label}
-        </button>
-    );
-}
-
 // 1. 小工具：金額顯示 Widget
 function BillWidget({ amount }) {
     const description = "此區只計算 JF26 相關團務費用";
@@ -376,41 +339,36 @@ function BillWidget({ amount }) {
     return (
         <div className="
             relative group border-r border-slate-700 mr-1 pr-2 sm:mr-2 sm:pr-4
-            flex w-full items-center justify-end gap-3   /* items-center 確保垂直置中 */
-            sm:w-auto sm:flex-col sm:items-end sm:gap-0  /* 電腦版維持原樣 */
+            flex w-full items-center justify-end gap-3   /* 手機版：左右並排、佔滿寬度 */
+            sm:w-auto sm:flex-col sm:items-end sm:gap-0  /* 電腦版：垂直堆疊、靠右對齊 */
         ">
             <button 
                 type="button"
                 onClick={() => alert(description)}
                 className="
                     focus:outline-none group/btn
-                    flex items-center gap-2
+                    flex items-center gap-2              /* 手機版：橫向間距 */
                     sm:mb-1 sm:gap-1.5
                 "
             >
-                {/* 文字：手機版 14px */}
                 <span className="text-[16px] sm:text-base text-slate-400 font-bold whitespace-nowrap pt-0.5">
                     個人英雄帳單
                 </span>
                 
-                {/* 提示 Icon */}
                 <span className="text-[10px] text-yellow-500 group-hover/btn:text-yellow-400 border-b border-dashed border-yellow-500/50 flex items-center gap-0.5 transition-colors">
                     <span className="hidden sm:inline">這是什麼?</span>
-                    <HelpCircle className="block sm:hidden" size={14} /> {/* 手機版 icon 稍微調大一點點以配合文字 */}
+                    <HelpCircle className="block sm:hidden" size={14} />
                     <HelpCircle className="hidden sm:block" size={10} />
                 </span>
             </button>
 
             <div className="text-yellow-400 font-black drop-shadow-sm text-right flex items-center">
-                <span className="text-base mr-1 text-yellow-200 mt-1">NT$</span> {/* 微調 NT$ 的位置 */}
-                
-                {/* 金額：移除 leading-none，讓它自然垂直置中 */}
+                <span className="text-xs mr-1 text-yellow-200 mt-1">NT$</span>
                 <span className="text-xl sm:text-xl font-mono">
                     {amount.toLocaleString()}
                 </span>
             </div>
 
-            {/* Tooltip (僅電腦版顯示) */}
             <div className="absolute top-12 right-0 w-max bg-slate-800 text-white text-xs p-2 rounded border border-yellow-400 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 hidden sm:block whitespace-pre-wrap text-left">
                {description}
             </div>
@@ -446,7 +404,7 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         return () => unsub();
     }, []);
 
-    // ★ 修改：加入 try-catch 防呆，避免白屏
+    // ★ 關鍵修正：這裡改為 currentUser，並加上安全檢查
     const checkIsNew = (item) => {
         try {
             const timeKey = item.updatedAt || item.createdAt;
@@ -454,10 +412,10 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
             
             const itemKey = `vendor_${item.id}`;
             
-            // 1. 優先讀取 Firebase (需確認 currentUser 存在)
+            // 1. 優先讀取 Firebase (注意變數名稱是 currentUser)
             let lastRead = currentUser?.readHistory?.[itemKey];
 
-            // 2. 備用讀取 LocalStorage (包在 try-catch 裡以免隱私模式報錯)
+            // 2. 備用讀取 LocalStorage
             if (!lastRead && currentUser?.id) {
                 try {
                     const localKey = `read_${currentUser.id}_${itemKey}`;
@@ -471,13 +429,13 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
             return new Date(timeKey) > new Date(lastRead);
         } catch (error) {
             console.error("checkIsNew error:", error);
-            return false; // 出錯時預設不顯示 NEW，避免崩潰
+            return false;
         }
     };
 
-    // ★ 修改：加入 try-catch 與安全檢查
+    // ★ 關鍵修正：這裡改為 currentUser
     const markAsRead = async (item) => {
-        if (!currentUser?.id) return; // 如果沒登入，直接結束
+        if (!currentUser?.id) return;
 
         const now = new Date().toISOString();
         const itemKey = `vendor_${item.id}`;
@@ -693,6 +651,7 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                 />
             </Modal>
             
+            {/* IP Viewer Modal */}
             {viewingIpsVendor && (
                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setViewingIpsVendor(null)}>
                     <div className="bg-white w-full max-w-md rounded-xl shadow-2xl border-4 border-slate-900 overflow-hidden" onClick={e => e.stopPropagation()}>
