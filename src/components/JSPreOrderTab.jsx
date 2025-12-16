@@ -1,16 +1,17 @@
+// src/components/JSPreOrderTab.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Clock3, ExternalLink, DollarSign, Truck, Save, 
     Camera, Calculator, RefreshCcw, ArrowDown 
 } from 'lucide-react';
+// ★ 補上缺少的 Firebase 函式
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { db } from "../firebase"; // 請確認這個路徑指向您的 firebase 設定檔
 
 const ORDER_STAGES = [
     "搶購中", "搶購完畢", "商品收款", "官方出貨", "抵台", "二補收款", "出貨", "結案"
 ];
 
-// JS 先行圖片庫
 const JS_IMAGES = [
     "https://pbs.twimg.com/media/G8MiWocaEAAYWbC?format=jpg&name=large",
     "https://pbs.twimg.com/media/G8MiYLNbIAA_YJg?format=jpg&name=large",
@@ -34,31 +35,39 @@ export default function JSPreOrderTab({ currentUser, isAdmin, onImageClick }) {
     const [loading, setLoading] = useState(true);
     const [isDirty, setIsDirty] = useState(false); 
 
+    // 讀取資料 (Firestore) & 自動排序
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const docRef = doc(db, "artifacts", "default-app-id", "public", "data", "jf26_calc_data", "main");
-                const docSnap = await onSnapshot(docRef, (doc) => {
-                    if (doc.exists()) {
-                        const data = doc.data();
-                        setOrders(data.orders || []);
-                        setSettings(data.settings || { exchangeRate: 0.24, totalShippingJPY: 0, status: '搶購中' });
-                    } else {
-                        setOrders([]); 
-                    }
-                    setLoading(false);
+        setLoading(true);
+        // 路徑設定
+        const docRef = doc(db, "artifacts", "default-app-id", "public", "data", "jf26_calc_data", "main");
+        
+        const unsub = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                
+                // ★ 自動排序邏輯 (Group by Name)
+                const rawList = data.orders || [];
+                const sortedList = rawList.sort((a, b) => {
+                    const nameCompare = a.buyer.localeCompare(b.buyer);
+                    if (nameCompare !== 0) return nameCompare;
+                    return a.id - b.id;
                 });
-                return () => docSnap();
-            } catch (e) {
-                console.error("Error fetching data:", e);
+
+                setOrders(sortedList);
+                setSettings(data.settings || { exchangeRate: 0.24, totalShippingJPY: 0, status: '搶購中' });
+            } else {
                 setOrders([]);
-                setLoading(false);
             }
-        };
-        fetchData();
+            setLoading(false);
+        }, (error) => {
+            console.error("Error fetching data:", error);
+            setLoading(false);
+        });
+
+        return () => unsub();
     }, []);
 
+    // 儲存資料
     const handleSave = async () => {
         try {
             await setDoc(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_calc_data", "main"), {
@@ -92,9 +101,9 @@ export default function JSPreOrderTab({ currentUser, isAdmin, onImageClick }) {
         setIsDirty(true);
     };
 
+    // 計算邏輯
     const totalBoughtQuantity = useMemo(() => orders.reduce((sum, item) => item.isBought ? sum + item.quantity : sum, 0), [orders]);
     const shippingPerUnitJPY = useMemo(() => totalBoughtQuantity > 0 ? (settings.totalShippingJPY / totalBoughtQuantity) : 0, [totalBoughtQuantity, settings.totalShippingJPY]);
-
     const summary = useMemo(() => {
         const report = {};
         orders.forEach(item => {
