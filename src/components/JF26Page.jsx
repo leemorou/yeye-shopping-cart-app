@@ -424,11 +424,8 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingIpsVendor, setViewingIpsVendor] = useState(null);
-    
-    // 這個是用來讓畫面在 LocalStorage 更新時也能即時反應 (針對反應較慢的網路)
     const [readStatusTick, setReadStatusTick] = useState(0);
 
-    // ... (INITIAL_VENDORS 與 useEffect 抓取資料的部分保持不變) ...
     const INITIAL_VENDORS = [
         {
             name: "JS 先行 (JUMP SHOP)",
@@ -449,57 +446,65 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         return () => unsub();
     }, []);
 
-    const checkIsNew = (item, type) => {
-        const timeKey = item.updatedAt || item.createdAt;
-        if (!timeKey) return false;
+    // ★ 修改：加入 try-catch 防呆，避免白屏
+    const checkIsNew = (item) => {
+        try {
+            const timeKey = item.updatedAt || item.createdAt;
+            if (!timeKey) return false;
+            
+            const itemKey = `vendor_${item.id}`;
+            
+            // 1. 優先讀取 Firebase (需確認 currentUser 存在)
+            let lastRead = currentUser?.readHistory?.[itemKey];
 
-        const itemKey = `${type}_${item.id}`;
-
-        // 1. 優先讀取：Firebase 資料庫 (appUser.readHistory)
-        // 這是關鍵：只要 appUser 載入成功，這裡就會抓到你存在雲端的已讀時間
-        let lastRead = appUser?.readHistory?.[itemKey];
-
-        // 2. 備用讀取：如果 Firebase 還沒載入或沒資料，先看 LocalStorage (提升體驗)
-        if (!lastRead) {
-            const localKey = `read_${appUser?.id}_${type}_${item.id}`;
-            lastRead = localStorage.getItem(localKey);
-        }
-
-        if (!lastRead) return true; // 兩邊都沒紀錄 = NEW
-        return new Date(timeKey) > new Date(lastRead);
-    };
-
-    const markAsRead = async (item, type) => {
-        const now = new Date().toISOString();
-        const itemKey = `${type}_${item.id}`;
-        // 加個 ?. 避免登出時報錯
-        const localKey = `read_${appUser?.id}_${type}_${item.id}`;
-
-        // 1. 本地更新 (讓 UI 瞬間變色，不用等伺服器回應)
-        localStorage.setItem(localKey, now);
-        setReadStatusTick(t => t + 1);
-
-        // 2. 雲端同步
-        if (appUser && appUser.id) {
-            try {
-                const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id);
-                
-                // ★ 關鍵：使用 setDoc 搭配 { merge: true }
-                // 這會自動建立 readHistory 物件(如果不存在)，或者更新裡面的 key，
-                // 且絕對不會覆蓋掉使用者的名字、頭像等其他資料。
-                await setDoc(userRef, {
-                    readHistory: {
-                        [itemKey]: now
-                    }
-                }, { merge: true });
-
-            } catch (e) {
-                console.error("同步已讀狀態失敗", e);
+            // 2. 備用讀取 LocalStorage (包在 try-catch 裡以免隱私模式報錯)
+            if (!lastRead && currentUser?.id) {
+                try {
+                    const localKey = `read_${currentUser.id}_${itemKey}`;
+                    lastRead = localStorage.getItem(localKey);
+                } catch (err) {
+                    console.warn("LocalStorage access denied:", err);
+                }
             }
+            
+            if (!lastRead) return true; 
+            return new Date(timeKey) > new Date(lastRead);
+        } catch (error) {
+            console.error("checkIsNew error:", error);
+            return false; // 出錯時預設不顯示 NEW，避免崩潰
         }
     };
 
-    // ... (剩下的 handleInitData, handleDelete, return UI 都不用動，保持原樣) ...
+    // ★ 修改：加入 try-catch 與安全檢查
+    const markAsRead = async (item) => {
+        if (!currentUser?.id) return; // 如果沒登入，直接結束
+
+        const now = new Date().toISOString();
+        const itemKey = `vendor_${item.id}`;
+        const localKey = `read_${currentUser.id}_${itemKey}`;
+
+        try {
+            // 1. 本地更新
+            try {
+                localStorage.setItem(localKey, now);
+                setReadStatusTick(t => t + 1); 
+            } catch (err) {
+                console.warn("LocalStorage write failed:", err);
+            }
+
+            // 2. 雲端同步
+            const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', currentUser.id);
+            await setDoc(userRef, {
+                readHistory: {
+                    [itemKey]: now
+                }
+            }, { merge: true });
+
+        } catch (e) {
+            console.error("同步已讀狀態失敗", e);
+        }
+    };
+
     const handleInitData = async () => {
         if (!confirm("確定要匯入預設資料嗎？")) return;
         try {
@@ -545,7 +550,6 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                 </div>
             )}
 
-            {/* 搜尋 & 新增 */}
             <div className="mb-10 flex flex-col md:flex-row items-center gap-4">
                 <div className="flex-1 w-full h-12 rounded-xl border-4 border-slate-900 bg-white shadow-[4px_4px_0px_0px_#0f172a] transition-all focus-within:ring-4 focus-within:ring-yellow-400/50 overflow-hidden flex items-center">
                     <div className="pl-4 pr-2 flex items-center justify-center text-slate-900">
@@ -569,24 +573,20 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                 )}
             </div>
 
-            {/* 卡片列表 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredVendors.map((vendor, index) => {
                     const productList = Array.isArray(vendor.products) ? vendor.products : [];
                     const showEllipsis = productList.length > 10;
                     const displayedProducts = showEllipsis ? productList.slice(0, 10) : productList;
 
-                    // 計算是否顯示 NEW
                     const isNew = checkIsNew(vendor);
 
                     return (
                         <div 
                             key={vendor.id} 
-                            onClick={() => markAsRead(vendor)} // 這裡會同時觸發本地和雲端更新
+                            onClick={() => markAsRead(vendor)}
                             className="bg-white rounded-xl border-4 border-slate-900 p-5 shadow-[8px_8px_0px_0px_#FACC15] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_#FACC15] transition-all duration-200 flex flex-col relative group cursor-pointer"
                         >
-                            
-                            {/* NEW 的標籤 UI */}
                             {isNew && (
                                 <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white pointer-events-none animate-bounce">
                                     NEW!
@@ -674,7 +674,6 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                 })}
             </div>
             
-            {/* Vendors Modal */}
             <Modal isOpen={modalType === 'vendor'} onClose={() => { setModalType(null); setEditingVendor(null); }} title={editingVendor ? "EDIT VENDOR" : "NEW VENDOR"}>
                 <VendorForm 
                     initialData={editingVendor} 
@@ -694,7 +693,6 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                 />
             </Modal>
             
-            {/* IP Viewer Modal */}
             {viewingIpsVendor && (
                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setViewingIpsVendor(null)}>
                     <div className="bg-white w-full max-w-md rounded-xl shadow-2xl border-4 border-slate-900 overflow-hidden" onClick={e => e.stopPropagation()}>
