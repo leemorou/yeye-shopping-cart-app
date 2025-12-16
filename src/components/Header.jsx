@@ -16,7 +16,7 @@ export default function Header({ title = "我的英友盡有學院", user, child
                 {/* Mobile: w-full (佔滿整行) + justify-center (置中) */}
                 {/* Desktop (md): w-auto (自動寬度) + justify-start (靠左) */}
                 <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start">
-                    <div className="bg-yellow-400 p-2 rounded transform -skew-x-12 border-2 border-white">
+                    <div className="bg-yellow-400 p-2 rounded transform -skew-x-12 border-2 border-yellow-800">
                         <ShoppingBag size={24} className="text-slate-900 transform skew-x-12" />
                     </div>
                     {/* Mobile: text-3xl (放大) */}

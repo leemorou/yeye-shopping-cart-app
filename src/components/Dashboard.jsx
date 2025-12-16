@@ -1,12 +1,13 @@
 // src/components/Dashboard.jsx
 import { useState, useEffect, useMemo } from "react"; 
 import { Link } from 'react-router-dom';
-// ★ 確認引入 setDoc
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { 
     ShoppingBag, Heart, Users, CheckCircle, Package, Plus, LogOut, 
     ExternalLink, Edit3, Settings, Calendar, Camera, Key, Trash2, Archive, School,
-    Zap, Shield, Star, Megaphone, Save, X, Search, Plane, Calculator, DollarSign, Crown, Info, Clock, Tag
+    Zap, Shield, Star, Megaphone, Save, X, Search, Plane, Calculator, DollarSign, Crown, Info, Clock, Tag,
+    // ★ 引入 FileText 圖示給雜項用
+    FileText 
 } from 'lucide-react'; 
 
 import WishForm from "./WishForm";
@@ -38,11 +39,16 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
     const [wishes, setWishes] = useState([]);
     const [groups, setGroups] = useState([]);
     const [orders, setOrders] = useState([]);
+    // ★ 新增：雜項費用 state
+    const [miscCharges, setMiscCharges] = useState([]);
     
     const [modalType, setModalType] = useState(null); 
     const [selectedGroupId, setSelectedGroupId] = useState(null);
     const [editingWish, setEditingWish] = useState(null);
     const [editingGroup, setEditingGroup] = useState(null);
+
+    // ★ 新增：雜項表單的暫存 state
+    const [miscForm, setMiscForm] = useState({ title: '', amount: '', targetUserId: '', note: '', paymentStatus: '未付款' });
 
     const [activeTab, setActiveTab] = useState('wishing');
 
@@ -64,12 +70,14 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
         const unsubWishes = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "wishes"), (snap) => setWishes(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubGroups = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), (snap) => setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubOrders = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), (snap) => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        // ★ 新增：監聽雜項費用
+        const unsubMisc = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "miscCharges"), (snap) => setMiscCharges(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         
         const unsubBulletin = onSnapshot(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), (docSnap) => {
             if (docSnap.exists()) setBulletin(docSnap.data().content);
         });
 
-        return () => { unsubWishes(); unsubGroups(); unsubOrders(); unsubBulletin(); };
+        return () => { unsubWishes(); unsubGroups(); unsubOrders(); unsubMisc(); unsubBulletin(); };
     }, []);
 
     // 自動清理過期團務
@@ -107,54 +115,36 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
 
     useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd]);
 
-    // --- 邏輯功能 (已更新為雲端+本地同步版) ---
+    // --- 邏輯功能 ---
 
     const checkIsNew = (item, type) => {
         const timeKey = item.updatedAt || item.createdAt;
         if (!timeKey) return false;
-
-        // 統一 Key 格式
         const itemKey = `${type}_${item.id}`; 
-
-        // 1. 優先讀取：Firebase 資料庫裡的紀錄 (跟著帳號走)
         let lastRead = appUser?.readHistory?.[itemKey];
-
-        // 2. 備用讀取：如果資料庫還沒載入，先看瀏覽器暫存 (提升體驗)
         if (!lastRead) {
             const localKey = `read_${appUser?.id}_${type}_${item.id}`;
             lastRead = localStorage.getItem(localKey);
         }
-
-        if (!lastRead) return true; // 兩邊都沒紀錄，就是 New
-        return new Date(timeKey) > new Date(lastRead); // 更新時間 > 最後讀取時間 = New
+        if (!lastRead) return true; 
+        return new Date(timeKey) > new Date(lastRead); 
     };
 
     const markAsRead = async (item, type) => {
         const now = new Date().toISOString();
         const itemKey = `${type}_${item.id}`;
         const localKey = `read_${appUser?.id}_${type}_${item.id}`;
-
-        // 1. 本地更新 (讓 UI 瞬間變色，不用等伺服器)
         localStorage.setItem(localKey, now);
-        setReadStatusTick(t => t + 1); // 強制觸發畫面重繪，讓 NEW 消失
-
-        // 2. 雲端同步 (使用 setDoc + merge)
+        setReadStatusTick(t => t + 1); 
         if (appUser && appUser.id) {
             try {
                 const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id);
-                // 使用 merge: true，只更新 readHistory 裡的特定 Key，不影響其他資料
                 await setDoc(userRef, {
-                    readHistory: {
-                        [itemKey]: now
-                    }
+                    readHistory: { [itemKey]: now }
                 }, { merge: true });
-            } catch (e) {
-                console.error("雲端已讀同步失敗", e);
-            }
+            } catch (e) { console.error("雲端已讀同步失敗", e); }
         }
     };
-    
-    // ... 其餘功能保持不變 ...
 
     const handleChangePassword = async (newPwd) => {
         if (!appUser) return;
@@ -283,24 +273,71 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
         }
     };
 
+    // ★ 新增：處理雜項費用的新增與刪除
+    const handleAddMisc = async () => {
+        if (!miscForm.title || !miscForm.amount || !miscForm.targetUserId) {
+            alert("請完整填寫必填欄位 (明細、金額、對象)");
+            return;
+        }
+        try {
+            const targetUser = usersData.find(u => u.id === miscForm.targetUserId);
+            await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "miscCharges"), {
+                title: miscForm.title,
+                amount: Number(miscForm.amount),
+                targetUserId: miscForm.targetUserId,
+                targetUserName: targetUser ? targetUser.name : 'Unknown',
+                // ★ 新增這兩行
+                note: miscForm.note || '', 
+                paymentStatus: miscForm.paymentStatus || '未付款', 
+                createdAt: new Date().toISOString()
+            });
+            setModalType(null);
+            // ★ 重置表單包含新欄位
+            setMiscForm({ title: '', amount: '', targetUserId: '', note: '', paymentStatus: '未付款' });
+            alert("雜項費用已新增");
+        } catch(e) { console.error(e); alert("新增失敗"); }
+    };
+
+    const handleDeleteMisc = async (id) => {
+        if(!confirm("確定要刪除這筆雜項費用嗎？")) return;
+        try {
+            await deleteDoc(doc(db, "artifacts", "default-app-id", "public", "data", "miscCharges", id));
+        } catch(e) { console.error(e); alert("刪除失敗"); }
+    };
+
+    const handleUpdateMiscStatus = async (id, newStatus) => {
+        try {
+            await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "miscCharges", id), {
+                paymentStatus: newStatus
+            });
+        } catch (e) {
+            console.error(e);
+            alert("更新狀態失敗");
+        }
+    };
+
     // --- 計算邏輯 ---
 
     const totalTWD = useMemo(() => {
         if (!orders || !groups || orders.length === 0 || !appUser) return 0;
 
-        const groupTotalQuantities = {};
-        orders.forEach(o => {
-            if (!groupTotalQuantities[o.groupId]) groupTotalQuantities[o.groupId] = 0;
-            o.items.forEach(item => {
-                groupTotalQuantities[o.groupId] += (Number(item.quantity) || 0);
-            });
-        });
-
-        return orders.reduce((acc, order) => {
+        // 1. 計算團務費用
+        const groupTotal = orders.reduce((acc, order) => {
             if (order.userId !== appUser.id) return acc;
             const g = groups.find(grp => grp.id === order.groupId);
             if (!g) return acc;
             
+            // ... (省略既有的團務計算邏輯，保持不變) ...
+            const groupTotalQuantities = {};
+            orders.forEach(o => {
+                 if (o.groupId === g.id) {
+                     if (!groupTotalQuantities[g.id]) groupTotalQuantities[g.id] = 0;
+                     o.items.forEach(item => {
+                         groupTotalQuantities[g.id] += (Number(item.quantity) || 0);
+                     });
+                 }
+            });
+
             if (['已成團', '二補計算'].includes(g.status)) {
                 const rate = Number(g.exchangeRate || 0);
                 const fullShippingFee = Number(g.shippingFee || 0);
@@ -359,7 +396,17 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             }
             return acc;
         }, 0); 
-    }, [orders, groups, appUser]);
+
+        // ★ 2. 加上雜項費用
+        // ★ 修改：加上 paymentStatus 篩選
+        // 如果資料庫是舊資料沒有 paymentStatus 欄位，預設視為 '未付款'
+        const miscTotal = miscCharges
+            .filter(m => m.targetUserId === appUser.id && (m.paymentStatus || '未付款') === '未付款')
+            .reduce((sum, m) => sum + Number(m.amount || 0), 0);
+
+        return groupTotal + miscTotal;
+
+    }, [orders, groups, appUser, miscCharges]);
 
     const { memberFeeSplit, isMember } = useMemo(() => {
         if (!appUser || !usersData.length) return { memberFeeSplit: 0, isMember: false };
@@ -421,7 +468,6 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-20 selection:bg-yellow-400 selection:text-black">
             
-            {/* ★ 使用新的 Header */}
             <Header 
                 user={appUser} 
                 onLogout={handleLogout} 
@@ -481,38 +527,28 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             </section>
 
             <nav className="max-w-5xl mx-auto mt-8 px-4">
-                {/* 容器改用 flex justify-around 確保按鈕平均分布 */}
                 <div className="bg-white p-1 rounded-lg shadow-sm border-2 border-slate-200 flex justify-around gap-1">
                     {[
                         { id: 'wishing', label: '許願池', icon: Heart },
                         { id: 'active', label: '揪團中', icon: Zap }, 
                         { id: 'completed', label: '已成團', icon: CheckCircle },
-                        { id: 'shipping', label: '國際二補', icon: Plane }, // 稍微簡化文字長度
+                        { id: 'shipping', label: '國際二補', icon: Plane },
+                        // ★ 新增：雜項 Tab
+                        { id: 'misc', label: '雜項', icon: FileText },
                         { id: 'closed', label: '已結案', icon: Archive }
                     ].map(tab => (
                         <button 
                             key={tab.id} 
                             onClick={() => setActiveTab(tab.id)} 
                             className={`
-                                flex-1                       /* 讓每個按鈕寬度平均 */
-                                flex flex-col                /* 關鍵：垂直排列 (上圖下文) */
-                                items-center justify-center 
-                                gap-1                        /* 圖示跟文字的距離 */
-                                py-2 px-0.5 sm:px-4          /* 調整內距，手機版左右不留白以爭取空間 */
-                                rounded 
-                                font-black 
-                                transition-all 
-                                border-2 
+                                flex-1 flex flex-col items-center justify-center gap-1 py-2 px-0.5 sm:px-4 rounded font-black transition-all border-2 
                                 ${activeTab === tab.id 
                                     ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' 
                                     : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                                 }
                             `}
                         >
-                            {/* 圖示 */}
                             <tab.icon size={20} className={activeTab === tab.id ? "animate-pulse" : ""} />
-                            
-                            {/* 文字：手機版設為 11px 避免過大，電腦版回復 14px (sm:text-sm) */}
                             <span className="text-[11px] sm:text-sm whitespace-nowrap">
                                 {tab.label}
                             </span>
@@ -524,7 +560,6 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             <main className="max-w-5xl mx-auto px-4 py-8">
                 {activeTab === 'wishing' && (
                     <div>
-                        {/* ★ 新增：許願池說明文字 */}
                         <div className="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r shadow-sm text-blue-900 text-sm font-bold flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
                             <Info className="shrink-0 mt-0.5 text-blue-600" size={18} />
                             <p className="leading-relaxed">
@@ -543,13 +578,11 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         className="bg-white rounded-lg p-4 shadow-sm border-2 border-slate-200 hover:border-slate-900 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition-all flex flex-col h-full relative group"
                                         onClick={() => markAsRead(wish, 'wish')}
                                     >
-                                        {/* ★ 修改這裡：加上 animate-bounce */}
                                         {isNew && (
                                             <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
                                                 NEW!
                                             </div>
                                         )}
-
                                         <div className="mb-3 w-full aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden"><ImageSlider images={wish.images} /></div>
                                         <div className="flex-1">
                                             <div className="flex justify-between items-start mb-2">
@@ -578,6 +611,94 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                         {wishes.length === 0 && (
                             <div className="col-span-full py-12 flex flex-col items-center justify-center text-slate-300"><Star size={48} className="mb-3 opacity-50" /><p className="font-bold">還沒有願望... 成為第一個許願的英雄吧！</p></div>
                         )}
+                    </div>
+                )}
+
+                {/* ★ 新增：雜項顯示區域 (位於 shipping 與 closed 之間) */}
+                {activeTab === 'misc' && (
+                    <div>
+                         <div className="mb-6 bg-gray-50 border-l-4 border-gray-500 p-4 rounded-r shadow-sm text-gray-900 text-sm font-bold flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                            <FileText className="shrink-0 mt-0.5 text-gray-600" size={18} />
+                            <p className="leading-relaxed">
+                                這裡記錄了非制式團務的雜項費用（例如：特別委託費、額外運費...等）。請記得確認並繳費喔！
+                            </p>
+                        </div>
+                        
+                        {appUser?.name === ADMIN_USER && (
+                            <div className="flex justify-end mb-6">
+                                <button onClick={() => setModalType('createMisc')} className="px-6 py-2 bg-slate-900 text-white border-2 border-slate-900 rounded font-black hover:bg-slate-700 flex items-center gap-2 shadow-[4px_4px_0px_0px_#FACC15] active:translate-y-0.5 active:shadow-none transition-all italic">
+                                    <Plus size={18} /> 新增雜項
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="bg-white rounded-lg shadow-sm border-2 border-slate-200 overflow-hidden">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-100 text-slate-700 font-black border-b-2 border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3">日期</th>
+                                        <th className="px-4 py-3">明細</th>
+                                        <th className="px-4 py-3">備註</th> {/* 新增 */}
+                                        <th className="px-4 py-3">對象</th>
+                                        <th className="px-4 py-3 text-right">金額 (TWD)</th>
+                                        <th className="px-4 py-3 text-center">狀態</th> {/* 新增 */}
+                                        {appUser?.name === ADMIN_USER && <th className="px-4 py-3 text-center">操作</th>}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {miscCharges
+                                        .filter(m => appUser?.name === ADMIN_USER || m.targetUserId === appUser?.id)
+                                        .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))
+                                        .map(m => (
+                                        <tr key={m.id} className={`border-b border-slate-100 transition-colors ${(m.paymentStatus || '未付款') === '已付款' ? 'bg-green-50/50' : 'hover:bg-slate-50'}`}>
+                                            <td className="px-4 py-3 text-slate-500 font-mono text-xs">{new Date(m.createdAt).toLocaleDateString()}</td>
+                                            <td className="px-4 py-3 font-bold text-slate-800">{m.title}</td>
+                                            {/* ★ 顯示備註 */}
+                                            <td className="px-4 py-3 text-slate-500 text-xs max-w-[150px] truncate" title={m.note}>{m.note || '-'}</td>
+                                            <td className="px-4 py-3 text-slate-600">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${m.targetUserId === appUser?.id ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100'}`}>
+                                                    {m.targetUserName}
+                                                </span>
+                                            </td>
+                                            {/* ★ 金額樣式：已付款顯示刪除線或變淡 */}
+                                            <td className={`px-4 py-3 text-right font-black ${(m.paymentStatus || '未付款') === '已付款' ? 'text-slate-400 line-through decoration-2' : 'text-slate-900'}`}>
+                                                ${m.amount}
+                                            </td>
+                                            {/* ★ 狀態欄位 */}
+                                            <td className="px-4 py-3 text-center">
+                                                {appUser?.name === ADMIN_USER ? (
+                                                    <select 
+                                                        className={`text-xs font-black border rounded px-1 py-1 cursor-pointer focus:outline-none ${(m.paymentStatus || '未付款') === '已付款' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-red-100 text-red-700 border-red-300'}`}
+                                                        value={m.paymentStatus || '未付款'}
+                                                        onChange={(e) => handleUpdateMiscStatus(m.id, e.target.value)}
+                                                    >
+                                                        <option value="未付款">未付款</option>
+                                                        <option value="已付款">已付款</option>
+                                                    </select>
+                                                ) : (
+                                                    <span className={`px-2 py-1 rounded text-xs font-black ${(m.paymentStatus || '未付款') === '已付款' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {m.paymentStatus || '未付款'}
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            {appUser?.name === ADMIN_USER && (
+                                                <td className="px-4 py-3 text-center">
+                                                    <button onClick={() => handleDeleteMisc(m.id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={16}/></button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))}
+                                    {miscCharges.filter(m => appUser?.name === ADMIN_USER || m.targetUserId === appUser?.id).length === 0 && (
+                                        <tr>
+                                            <td colSpan={appUser?.name === ADMIN_USER ? 7 : 6} className="px-4 py-8 text-center text-slate-400 font-bold">
+                                                目前沒有雜項費用紀錄
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
 
@@ -630,7 +751,6 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         className={`bg-white rounded-lg p-5 shadow-sm border-2 border-slate-900 flex flex-col relative overflow-visible ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`}
                                         onClick={() => activeTab === 'active' && markAsRead(group, 'group')}
                                     >
-                                        {/* ★ 修改這裡：加上 animate-bounce */}
                                         {isNew && (
                                             <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
                                                 NEW!
@@ -744,6 +864,72 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             </Modal>
             <Modal isOpen={modalType === 'viewOrders'} onClose={() => setModalType(null)} title={`訂單明細：${selectedGroup?.title}`}>
                 {selectedGroup && <OrderSummary group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onEdit={selectedGroup?.status === '揪團中' ? () => setModalType('joinGroup') : null} />}
+            </Modal>
+            
+            {/* ★ 新增：雜項費用填寫 Modal */}
+            <Modal isOpen={modalType === 'createMisc'} onClose={() => setModalType(null)} title="新增雜項費用">
+                 <div className="space-y-4">
+                     <div>
+                         <label className="block text-sm font-bold text-slate-700 mb-1">明細內容 <span className="text-red-500">*</span></label>
+                         <input 
+                            type="text" 
+                            className="w-full border-2 border-slate-300 rounded p-2 focus:border-slate-900 focus:outline-none" 
+                            placeholder="例如：12/16 包材費"
+                            value={miscForm.title}
+                            onChange={e => setMiscForm({...miscForm, title: e.target.value})}
+                         />
+                     </div>
+                     <div>
+                         <label className="block text-sm font-bold text-slate-700 mb-1">備註 (選填)</label>
+                         <input 
+                            type="text" 
+                            className="w-full border-2 border-slate-300 rounded p-2 focus:border-slate-900 focus:outline-none" 
+                            placeholder="補充說明..."
+                            value={miscForm.note}
+                            onChange={e => setMiscForm({...miscForm, note: e.target.value})}
+                         />
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                             <label className="block text-sm font-bold text-slate-700 mb-1">金額 (TWD) <span className="text-red-500">*</span></label>
+                             <input 
+                                type="number" 
+                                className="w-full border-2 border-slate-300 rounded p-2 focus:border-slate-900 focus:outline-none" 
+                                placeholder="輸入金額"
+                                value={miscForm.amount}
+                                onChange={e => setMiscForm({...miscForm, amount: e.target.value})}
+                             />
+                        </div>
+                        <div>
+                             <label className="block text-sm font-bold text-slate-700 mb-1">初始狀態</label>
+                             <select 
+                                className="w-full border-2 border-slate-300 rounded p-2 focus:border-slate-900 focus:outline-none bg-white"
+                                value={miscForm.paymentStatus}
+                                onChange={e => setMiscForm({...miscForm, paymentStatus: e.target.value})}
+                             >
+                                 <option value="未付款">未付款</option>
+                                 <option value="已付款">已付款</option>
+                             </select>
+                        </div>
+                     </div>
+                     
+                     <div>
+                         <label className="block text-sm font-bold text-slate-700 mb-1">計算在誰的費用中 <span className="text-red-500">*</span></label>
+                         <select 
+                            className="w-full border-2 border-slate-300 rounded p-2 focus:border-slate-900 focus:outline-none bg-white"
+                            value={miscForm.targetUserId}
+                            onChange={e => setMiscForm({...miscForm, targetUserId: e.target.value})}
+                         >
+                             <option value="">請選擇使用者</option>
+                             {usersData.map(u => (
+                                 <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                             ))}
+                         </select>
+                     </div>
+                     <div className="flex justify-end pt-4 border-t border-slate-100">
+                         <button onClick={handleAddMisc} className="px-6 py-2 bg-slate-900 text-white font-black rounded hover:bg-slate-700">確認新增</button>
+                     </div>
+                 </div>
             </Modal>
         </div>
     );
