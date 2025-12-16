@@ -1,11 +1,11 @@
 // src/components/JF26Page.jsx
-import React, { useState, useEffect, useMemo } from 'react'; // 修正1: 加入 useMemo
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     ExternalLink, Tag, AlertCircle, Search, Rocket, Plus, Edit3, Trash2, X, 
     Database, ShoppingCart, MapPin, Truck, List, ArrowUp, ArrowDown, Home, 
     Crown, LogOut, Camera, Key, Calendar, Clock, CheckCircle, ArrowLeft,
     Ticket, DollarSign, Package, Check, XCircle, Clock3,
-    ZoomIn, ZoomOut, RotateCcw, RefreshCcw, Save, // 修正2: 加入 Save 和 RefreshCcw
+    ZoomIn, ZoomOut, RotateCcw, RefreshCcw, Save, 
     Calculator, FileText, CheckSquare, Square, Truck as TruckIcon, PackageCheck, AlertTriangle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -29,78 +29,6 @@ const ORDER_STAGES = [
     "搶購中", "搶購完畢", "商品收款", "官方出貨", "抵台", "二補收款", "出貨", "結案"
 ];
 
-// 你提供的預設購買清單
-const PREFILLED_ORDERS = [
-    { buyer: "踢", items: [
-        { name: "坂本日常 神佛趴娃組", qty: 1, price: 0, isBought: false },
-        { name: "坂本日常 箔押明信片盲抽", qty: 4, price: 0, isBought: false },
-        { name: "膽大黨 吉吉趴娃", qty: 1, price: 0, isBought: false },
-        { name: "我英 箔入壓克力卡3入組", qty: 1, price: 0, isBought: false },
-    ]},
-    { buyer: "寶", items: [
-        { name: "坂本日常 神佛趴娃組", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 厄卡倫趴娃", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 吉吉趴娃", qty: 1, price: 0, isBought: false },
-        { name: "惡靈剋星 薫+康太郎趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 葉流火趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 要圭趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 藤堂趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 千早趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 小山趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 透卡組", qty: 1, price: 0, isBought: false },
-        { name: "神樂鉢 淵天（涅）", qty: 1, price: 0, isBought: false },
-    ]},
-    { buyer: "安", items: [
-        { name: "坂本日常 神佛趴娃組", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 厄卡倫趴娃", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 愛羅趴娃", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 吉吉趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 葉流火趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 要圭趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 藤堂趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 千早趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 小山趴娃", qty: 1, price: 0, isBought: false },
-        { name: "我英 箔入壓克力卡3入組", qty: 1, price: 0, isBought: false },
-        { name: "火影 鼬趴娃", qty: 1, price: 0, isBought: false },
-        { name: "火影 蠍趴娃", qty: 1, price: 0, isBought: false },
-        { name: "火影 地達羅趴娃", qty: 1, price: 0, isBought: false },
-    ]},
-    { buyer: "澄", items: [
-        { name: "坂本日常 神佛趴娃組", qty: 1, price: 0, isBought: false },
-        { name: "惡靈剋星 薫+康太郎趴娃", qty: 1, price: 0, isBought: false },
-        { name: "我英 箔入壓克力卡3入組", qty: 1, price: 0, isBought: false },
-    ]},
-    { buyer: "玫", items: [
-        { name: "膽大黨 厄卡倫趴娃", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 愛羅趴娃", qty: 1, price: 0, isBought: false },
-        { name: "膽大黨 吉吉趴娃", qty: 1, price: 0, isBought: false },
-        { name: "我英 箔入壓克力卡3入組", qty: 1, price: 0, isBought: false },
-        { name: "火影 鼬趴娃", qty: 1, price: 0, isBought: false },
-    ]},
-    { buyer: "S姐", items: [
-        { name: "失憶投捕 葉流火趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 要圭趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 藤堂趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 千早趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 小山趴娃", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 透卡組", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 要圭便利貼", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 清峰毛巾", qty: 1, price: 0, isBought: false },
-        { name: "失憶投捕 要圭毛巾", qty: 1, price: 0, isBought: false },
-        { name: "我英 箔入壓克力卡3入組", qty: 1, price: 0, isBought: false },
-        { name: "我英 焦凍寶寶抱枕", qty: 1, price: 0, isBought: false },
-        { name: "我英 糖霜餅乾組", qty: 1, price: 0, isBought: false },
-        { name: "我英 大徽章", qty: 1, price: 0, isBought: false },
-        { name: "我英 壓克力貼紙", qty: 10, price: 0, isBought: false },
-        { name: "魔女 貼紙組", qty: 1, price: 0, isBought: false },
-        { name: "銀魂 閃卡", qty: 10, price: 0, isBought: false },
-        { name: "鬼滅 閃卡", qty: 10, price: 0, isBought: false },
-        { name: "鏈鋸人 箔入透卡組", qty: 4, price: 0, isBought: false },
-    ]},
-    { buyer: "姮", items: [
-        { name: "我英 箔入壓克力卡3入組", qty: 1, price: 0, isBought: false },
-    ]}
-];
 
 // JS 先行圖片庫
 const JS_IMAGES = [
@@ -408,8 +336,8 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingIpsVendor, setViewingIpsVendor] = useState(null);
     
-    // 用於強制刷新畫面 (Read Status)
-    const [, setReadStatusTick] = useState(0);
+    // 用於強制刷新讀取狀態
+    const [readStatusTick, setReadStatusTick] = useState(0);
 
     useEffect(() => {
         const unsub = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_vendors"), (snap) => {
@@ -462,19 +390,51 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         } catch (e) { console.error("排序失敗", e); }
     };
 
-    const isVendorNew = (vendor) => {
-        if (!vendor.updatedAt || !currentUser) return false;
-        const lastReadKey = `jf26_read_${currentUser.id}_${vendor.id}`;
-        const lastReadTime = localStorage.getItem(lastReadKey);
-        if (!lastReadTime) return true;
-        return new Date(vendor.updatedAt) > new Date(lastReadTime);
+    // 2. 新的判斷邏輯 (檢查雲端 + 本地)
+    const checkIsNew = (vendor) => {
+        const type = 'jf26'; // 定義類型 key
+        const timeKey = vendor.updatedAt || vendor.createdAt; // 確保你的資料有這個欄位
+        if (!timeKey) return false;
+
+        const itemKey = `${type}_${vendor.id}`;
+        const localKey = `read_${currentUser.id}_${type}_${vendor.id}`;
+
+        // A. 優先看 Firebase (currentUser 來自 props)
+        let lastRead = currentUser?.readHistory?.[itemKey];
+
+        // B. 沒有才看 localStorage
+        if (!lastRead) {
+            lastRead = localStorage.getItem(localKey);
+        }
+
+        if (!lastRead) return true;
+        return new Date(timeKey) > new Date(lastRead);
     };
 
-    const markAsRead = (vendorId) => {
-        if (!currentUser) return;
-        const lastReadKey = `jf26_read_${currentUser.id}_${vendorId}`;
-        localStorage.setItem(lastReadKey, new Date().toISOString());
-        setReadStatusTick(prev => prev + 1);
+    // 3. 新的寫入邏輯 (同步到 Firebase)
+    const markAsRead = async (vendor) => {
+        const type = 'jf26';
+        const now = new Date().toISOString();
+        const itemKey = `${type}_${vendor.id}`;
+        const localKey = `read_${currentUser.id}_${type}_${vendor.id}`;
+
+        // 本地立刻變色
+        localStorage.setItem(localKey, now);
+        setReadStatusTick(t => t + 1);
+
+        // 雲端同步
+        if (currentUser && currentUser.id) {
+            try {
+                const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', currentUser.id);
+                await setDoc(userRef, {
+                    readHistory: {
+                        [itemKey]: now
+                    }
+                }, { merge: true });
+            } catch (e) {
+                console.error("同步失敗", e);
+            }
+        }
     };
 
     const getTagStyle = (tag) => {
@@ -526,7 +486,7 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                     const productList = Array.isArray(vendor.products) ? vendor.products : [];
                     const showEllipsis = productList.length > IP_LIMIT;
                     const displayedProducts = showEllipsis ? productList.slice(0, IP_LIMIT) : productList;
-                    const isNew = isVendorNew(vendor);
+                    const isNew = checkIsNew(vendor);
 
                     return (
                          <div key={vendor.id} className="bg-white rounded-xl border-4 border-slate-900 p-5 shadow-[8px_8px_0px_0px_#FACC15] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_#FACC15] transition-all duration-200 flex flex-col relative group">
@@ -571,7 +531,12 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                                             <span key={idx} className="bg-yellow-50 text-slate-900 text-xs font-bold px-2 py-1 border-2 border-slate-200 transition-transform hover:scale-105 hover:border-slate-900 hover:bg-yellow-200">{ip}</span>
                                         ))}
                                         {showEllipsis && (
-                                            <button onClick={() => { setViewingIpsVendor(vendor); markAsRead(vendor.id); }} className="bg-slate-800 text-white text-xs font-bold px-2 py-1 border-2 border-slate-900 hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1"><List size={12}/> MORE...</button>
+                                            <button onClick={() => { 
+                                                setViewingIpsVendor(vendor); 
+                                                markAsRead(vendor);
+                                            }} className="bg-slate-800 text-white text-xs font-bold px-2 py-1 border-2 border-slate-900 hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1">
+                                                <List size={12}/> MORE...
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -607,15 +572,27 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                             <div className="mt-6 space-y-3 pt-4 border-t-2 border-slate-100">
                                 <div className="flex gap-2">
                                     {vendor.preOrder?.url && (
-                                        <a href={vendor.preOrder.url} onClick={() => markAsRead(vendor.id)} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-yellow-400 text-slate-900 text-center font-black rounded border-2 border-slate-900 hover:bg-yellow-300 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none"><ShoppingCart size={14} strokeWidth={3} /> 事前受注</a>
+                                        <a href={vendor.preOrder.url} 
+                                        onClick={() => markAsRead(vendor)}
+                                        target="_blank" rel="noreferrer" className="flex-1 py-2 bg-yellow-400 text-slate-900 text-center font-black rounded border-2 border-slate-900 hover:bg-yellow-300 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none">
+                                        <ShoppingCart size={14} strokeWidth={3} /> 事前受注
+                                        </a>
                                     )}
-                                    {vendor.postOrder?.url && (
-                                        <a href={vendor.postOrder.url} onClick={() => markAsRead(vendor.id)} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-blue-500 text-white text-center font-black rounded border-2 border-slate-900 hover:bg-blue-400 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none"><Truck size={14} strokeWidth={3} /> 事後通販</a>
+                                   {vendor.postOrder?.url && (
+                                        <a href={vendor.postOrder.url} 
+                                        onClick={() => markAsRead(vendor)}
+                                        target="_blank" rel="noreferrer" className="flex-1 py-2 bg-blue-500 text-white text-center font-black rounded border-2 border-slate-900 hover:bg-blue-400 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none">
+                                        <Truck size={14} strokeWidth={3} /> 事後通販
+                                        </a>
                                     )}
                                 </div>
-                                {vendor.mainUrl && (
-                                    <a href={vendor.mainUrl} onClick={() => markAsRead(vendor.id)} target="_blank" rel="noreferrer" className="block w-full py-2 bg-slate-100 text-slate-700 text-center font-black rounded border-2 border-slate-900 hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"><ExternalLink size={16} /> 攤商/活動官網</a>
-                                )}
+                                    {vendor.mainUrl && (
+                                            <a href={vendor.mainUrl} 
+                                                onClick={() => markAsRead(vendor)}
+                                                target="_blank" rel="noreferrer" className="block w-full py-2 bg-slate-100 text-slate-700 text-center font-black rounded border-2 border-slate-900 hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm">
+                                                <ExternalLink size={16} /> 攤商/活動官網
+                                            </a>
+                                    )}
                             </div>
                         </div>
                     );
@@ -679,36 +656,11 @@ function JSPreOrderTab({ currentUser, isAdmin, onImageClick }) {
     const [loading, setLoading] = useState(true);
     const [isDirty, setIsDirty] = useState(false); 
 
-    // 資料轉換：將巢狀的 PREFILLED_ORDERS 轉為平坦的表格資料
-    const transformInitialData = () => {
-        let flatData = [];
-        let idCounter = 1;
-        PREFILLED_ORDERS.forEach(person => {
-            person.items.forEach(item => {
-                const firstSpaceIndex = item.name.indexOf(' ');
-                const ip = firstSpaceIndex > -1 ? item.name.substring(0, firstSpaceIndex) : '其他';
-                const productName = firstSpaceIndex > -1 ? item.name.substring(firstSpaceIndex + 1) : item.name;
-
-                flatData.push({
-                    id: idCounter++,
-                    buyer: person.buyer,
-                    ip: ip,
-                    name: productName,
-                    quantity: item.qty,
-                    price: item.price || 0,
-                    isBought: item.isBought || false
-                });
-            });
-        });
-        return flatData;
-    };
-
     // 讀取資料 (Firestore)
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // 修正重點：路徑加上 "main"，變成偶數段 (artifacts/default-app-id/public/data/jf26_calc_data/main)
                 const docRef = doc(db, "artifacts", "default-app-id", "public", "data", "jf26_calc_data", "main");
                 const docSnap = await onSnapshot(docRef, (doc) => {
                     if (doc.exists()) {
@@ -716,14 +668,15 @@ function JSPreOrderTab({ currentUser, isAdmin, onImageClick }) {
                         setOrders(data.orders || []);
                         setSettings(data.settings || { exchangeRate: 0.24, totalShippingJPY: 0, status: '搶購中' });
                     } else {
-                        setOrders(transformInitialData());
+                        // ★ 修改這裡：如果資料庫是空的，就設為空陣列，不再讀取預設資料
+                        setOrders([]); 
                     }
                     setLoading(false);
                 });
                 return () => docSnap();
             } catch (e) {
                 console.error("Error fetching data:", e);
-                setOrders(transformInitialData()); 
+                setOrders([]); // ★ 這裡也改成空陣列
                 setLoading(false);
             }
         };
