@@ -620,7 +620,7 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                          <div className="mb-6 bg-gray-50 border-l-4 border-gray-500 p-4 rounded-r shadow-sm text-gray-900 text-sm font-bold flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
                             <FileText className="shrink-0 mt-0.5 text-gray-600" size={18} />
                             <p className="leading-relaxed">
-                                這裡記錄了非制式團務的雜項費用（例如：特別委託費、額外運費...等）。請記得確認並繳費喔！
+                                這裡記錄了非制式團務的雜項費用（例如：個人交易...等）。
                             </p>
                         </div>
                         
