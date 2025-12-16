@@ -114,32 +114,49 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
     const checkIsNew = (item, type) => {
         const timeKey = item.updatedAt || item.createdAt;
         if (!timeKey) return false;
-        const itemKey = `${type}_${item.id}`;
+
+        // 統一 Key 格式：例如 'wish_docId123' 或 'group_docId456'
+        const itemKey = `${type}_${item.id}`; 
+
+        // 1. 優先讀取：Firebase 資料庫裡的紀錄 (跟著帳號走)
+        // 確保 appUser 存在且有 readHistory 欄位
         let lastRead = appUser?.readHistory?.[itemKey];
+
+        // 2. 備用讀取：如果資料庫還沒載入，先看瀏覽器暫存 (提升體驗)
         if (!lastRead) {
-            const localKey = `read_${appUser.id}_${type}_${item.id}`;
+            const localKey = `read_${appUser?.id}_${itemKey}`;
             lastRead = localStorage.getItem(localKey);
         }
-        if (!lastRead) return true;
-        return new Date(timeKey) > new Date(lastRead);
+
+        if (!lastRead) return true; // 兩邊都沒紀錄，就是 New
+        return new Date(timeKey) > new Date(lastRead); // 更新時間 > 最後讀取時間 = New
     };
 
     const markAsRead = async (item, type) => {
         const now = new Date().toISOString();
-        const itemKey = `${type}_${item.id}`; 
-        const localKey = `read_${appUser.id}_${type}_${item.id}`;
+        const itemKey = `${type}_${item.id}`;
+        
+        // 1. 先寫入 LocalStorage (為了讓 UI 瞬間反應，不用等網路)
+        const localKey = `read_${appUser?.id}_${itemKey}`;
         localStorage.setItem(localKey, now);
-        setReadStatusTick(t => t + 1);
+        setReadStatusTick(t => t + 1); // 強制觸發畫面重繪，讓 NEW 消失
+
+        // 2. 再寫入 Firebase (為了跨瀏覽器/永久儲存)
         if (appUser && appUser.id) {
             try {
                 const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id);
+                // 使用 merge: true，只更新 readHistory 裡的特定 Key，不影響其他資料
                 await setDoc(userRef, {
-                    readHistory: { [itemKey]: now }
+                    readHistory: {
+                        [itemKey]: now
+                    }
                 }, { merge: true });
-            } catch (e) { console.error("同步失敗", e); }
+            } catch (e) {
+                console.error("雲端已讀同步失敗", e);
+            }
         }
     };
-
+    
     const handleChangePassword = async (newPwd) => {
         if (!appUser) return;
         await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { password: newPwd });

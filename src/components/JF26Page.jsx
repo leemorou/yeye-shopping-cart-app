@@ -425,10 +425,10 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingIpsVendor, setViewingIpsVendor] = useState(null);
     
-    // ★ 新增 1: 用來強制觸發畫面更新的 state
+    // 這個是用來讓畫面在 LocalStorage 更新時也能即時反應 (針對反應較慢的網路)
     const [readStatusTick, setReadStatusTick] = useState(0);
 
-    // 預設資料
+    // ... (INITIAL_VENDORS 與 useEffect 抓取資料的部分保持不變) ...
     const INITIAL_VENDORS = [
         {
             name: "JS 先行 (JUMP SHOP)",
@@ -449,27 +449,53 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         return () => unsub();
     }, []);
 
-    // ★ 新增 2: 檢查是否為新項目的邏輯
+    // ★ 修改 1: 雲端 + 本地 雙重檢查
     const checkIsNew = (item) => {
         const timeKey = item.updatedAt || item.createdAt;
         if (!timeKey) return false;
         
-        // 組合 LocalStorage 的 Key (每個使用者分開紀錄，並加上 vendor 前綴避免跟其他頁面衝突)
-        const localKey = `read_${currentUser?.id}_vendor_${item.id}`;
-        const lastRead = localStorage.getItem(localKey);
+        const itemKey = `vendor_${item.id}`; // 統一 Key 格式
         
-        if (!lastRead) return true; // 沒讀過就是 New
-        return new Date(timeKey) > new Date(lastRead); // 更新時間比讀取時間晚就是 New
+        // 優先讀取：Firebase 資料庫裡的紀錄 (跟著帳號走)
+        let lastRead = currentUser?.readHistory?.[itemKey];
+
+        // 備用讀取：如果資料庫還沒載入，先看瀏覽器暫存 (提升體驗)
+        if (!lastRead) {
+            const localKey = `read_${currentUser?.id}_${itemKey}`;
+            lastRead = localStorage.getItem(localKey);
+        }
+        
+        if (!lastRead) return true; // 兩邊都沒紀錄，就是 New
+        return new Date(timeKey) > new Date(lastRead);
     };
 
-    // ★ 新增 3: 標記為已讀的邏輯
-    const markAsRead = (item) => {
+    // ★ 修改 2: 同步寫入 Firebase
+    const markAsRead = async (item) => {
         const now = new Date().toISOString();
-        const localKey = `read_${currentUser?.id}_vendor_${item.id}`;
+        const itemKey = `vendor_${item.id}`;
+        
+        // 1. 先寫入 LocalStorage (為了讓 UI 瞬間反應，不用等網路)
+        const localKey = `read_${currentUser?.id}_${itemKey}`;
         localStorage.setItem(localKey, now);
-        setReadStatusTick(t => t + 1); // 強制更新畫面，讓 NEW 消失
+        setReadStatusTick(t => t + 1); // 強制觸發畫面重繪，讓 NEW 消失
+
+        // 2. 再寫入 Firebase (為了跨瀏覽器/永久儲存)
+        if (currentUser && currentUser.id) {
+            try {
+                const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', currentUser.id);
+                // 使用 merge: true，只更新 readHistory 裡的特定欄位，不影響其他資料
+                await setDoc(userRef, {
+                    readHistory: {
+                        [itemKey]: now
+                    }
+                }, { merge: true });
+            } catch (e) {
+                console.error("雲端已讀同步失敗", e);
+            }
+        }
     };
 
+    // ... (剩下的 handleInitData, handleDelete, return UI 都不用動，保持原樣) ...
     const handleInitData = async () => {
         if (!confirm("確定要匯入預設資料嗎？")) return;
         try {
@@ -546,25 +572,23 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                     const showEllipsis = productList.length > 10;
                     const displayedProducts = showEllipsis ? productList.slice(0, 10) : productList;
 
-                    // ★ 計算是否顯示 NEW
+                    // 計算是否顯示 NEW
                     const isNew = checkIsNew(vendor);
 
                     return (
                         <div 
                             key={vendor.id} 
-                            // ★ 加入 onClick 事件來消除 NEW
-                            onClick={() => markAsRead(vendor)}
+                            onClick={() => markAsRead(vendor)} // 這裡會同時觸發本地和雲端更新
                             className="bg-white rounded-xl border-4 border-slate-900 p-5 shadow-[8px_8px_0px_0px_#FACC15] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_#FACC15] transition-all duration-200 flex flex-col relative group cursor-pointer"
                         >
                             
-                            {/* ★ NEW 的標籤 UI */}
+                            {/* NEW 的標籤 UI */}
                             {isNew && (
                                 <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white pointer-events-none animate-bounce">
                                     NEW!
                                 </div>
                             )}
 
-                            {/* 裝飾圓點 */}
                             <div className="absolute top-3 right-3 w-3 h-3 rounded-full bg-slate-200 border-2 border-slate-900 z-10"></div>
                             
                             <div className="flex justify-between items-start mb-4 pr-4 border-b-2 border-slate-100 pb-2">
@@ -572,7 +596,6 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                                 {isAdmin && (
                                     <div className="flex flex-col gap-1 ml-2 shrink-0">
                                         <div className="flex gap-1">
-                                            {/* 注意：這裡要加 e.stopPropagation() 避免點擊編輯時觸發外層的已讀 */}
                                             <button onClick={(e) => { e.stopPropagation(); setEditingVendor(vendor); setModalType('vendor'); }} className="p-1.5 bg-white text-slate-900 rounded border-2 border-slate-900 hover:bg-slate-100 shadow-[2px_2px_0px_0px_#000]" title="編輯"><Edit3 size={14} strokeWidth={2.5} /></button>
                                             <button onClick={(e) => { e.stopPropagation(); handleDelete(vendor.id); }} className="p-1.5 bg-red-500 text-white rounded border-2 border-slate-900 hover:bg-red-600 shadow-[2px_2px_0px_0px_#000]" title="刪除"><Trash2 size={14} strokeWidth={2.5} /></button>
                                         </div>
