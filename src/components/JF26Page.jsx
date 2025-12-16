@@ -96,7 +96,6 @@ export default function JF26Page({ currentUser }) {
         };
     }, [currentUser]);
 
-    // ★ 這裡補回了真實的程式邏輯，不再是省略號
     const handleLogout = () => {
         localStorage.removeItem('app_user_id');
         window.location.reload(); 
@@ -151,29 +150,39 @@ export default function JF26Page({ currentUser }) {
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-20 selection:bg-yellow-400 selection:text-black">
-            {/* Header */}
+           {/* Header */}
             <header className="sticky top-0 z-30 bg-slate-900 border-b-4 border-yellow-400 px-4 py-3 shadow-md">
-                <div className="max-w-5xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                {/* 外層容器：手機版 flex-col (垂直)，電腦版 flex-row (水平) */}
+                <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+                    
+                    {/* 第一列 (左側)：返回按鈕 + 標題 */}
+                    {/* w-full 讓它在手機版佔滿第一列 */}
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
                         <Link to="/home" className="flex items-center gap-2 bg-yellow-400 px-4 py-1.5 rounded transform -skew-x-12 border-2 border-yellow-600 hover:scale-105 transition-transform group">
                             <ArrowLeft size={20} className="text-slate-900 transform skew-x-12 group-hover:-translate-x-1 transition-transform" strokeWidth={3} />
-                            <span className="text-slate-900 font-black text-sm transform skew-x-12 hidden sm:inline">返回首頁</span>
+                            <span className="text-slate-900 font-black text-sm transform skew-x-12 hidden">返回</span>
                         </Link>
-                        <h1 className="text-2xl font-black italic tracking-tight text-white hidden md:block">
+                        <h1 className="text-2xl font-black italic tracking-tight text-white">
                             JF26 作戰中心
                         </h1>
                     </div>
                     
-                    <div className="flex items-center gap-2 sm:gap-4">
+                    {/* 第二列 (右側)：Widget + 名字 + 頭像選單 */}
+                    {/* w-full 讓它在手機版佔滿第二列，justify-end 讓內容靠右對齊 */}
+                    <div className="flex items-center justify-end gap-2 sm:gap-4 w-full sm:w-auto">
+                        
                         {/* Widget */}
                         {currentUser && (
                             <BillWidget amount={myTotalBill} />
                         )}
                         
+                        {/* 名字區塊 (維持原本設定：手機版隱藏，電腦版顯示) */}
                         <div className="text-right hidden sm:block">
                             <p className="text-xs text-slate-400">HERO NAME</p>
                             <p className="font-bold text-white tracking-wide">{currentUser?.name}</p>
                         </div>
+
+                        {/* 頭像與下拉選單 */}
                         <div className="relative">
                             <button onClick={() => setMenuOpen(!menuOpen)} className={`w-10 h-10 rounded-full bg-slate-800 border-2 ${isMember ? 'border-purple-500' : 'border-yellow-400'} shadow-lg overflow-hidden hover:scale-105 transition-all relative`}>
                                 <img src={currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.name}`} alt="avatar" className="w-full h-full object-cover" />
@@ -186,23 +195,23 @@ export default function JF26Page({ currentUser }) {
                             
                             {menuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border-2 border-slate-900 py-1 z-50 animate-in fade-in slide-in-from-top-2">
-                                     <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
-                                         <div className="flex justify-between items-center mb-1">
-                                             <span className="text-xs font-black text-slate-500 flex items-center gap-1">
-                                                 <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
-                                                 PLUS 會員
-                                             </span>
-                                             {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
-                                         </div>
-                                         <button 
-                                             onClick={handleToggleMembership}
-                                             className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && currentUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
-                                         >
-                                             {isMember 
-                                                 ? (currentUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
-                                                 : "訂閱會員 (NT$90/月均分)"}
-                                         </button>
-                                     </div>
+                                        <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-xs font-black text-slate-500 flex items-center gap-1">
+                                                    <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
+                                                    PLUS 會員
+                                                </span>
+                                                {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
+                                            </div>
+                                            <button 
+                                                onClick={handleToggleMembership}
+                                                className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && currentUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
+                                            >
+                                                {isMember 
+                                                    ? (currentUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
+                                                    : "訂閱會員 (NT$90/月均分)"}
+                                            </button>
+                                        </div>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeName'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Tag size={16} /> 修改暱稱</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeAvatar'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Camera size={16} /> 更換英雄頭像</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changePwd'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Key size={16} /> 修改密碼</button>
@@ -247,14 +256,48 @@ export default function JF26Page({ currentUser }) {
                 </div>
 
                 {/* TAB 導航 */}
-                <div className="flex justify-center mb-8">
-                    <div className="bg-slate-200 p-1.5 rounded-xl flex gap-2 border-2 border-slate-300">
-                        <TabButton id="vendors" label="攤商情報" icon={Rocket} active={currentTab === 'vendors'} onClick={setCurrentTab} />
-                        <TabButton id="js_pre" label="JS 先行 (Online)" icon={ShoppingCart} active={currentTab === 'js_pre'} onClick={setCurrentTab} />
-                        <TabButton id="jcs_lottery" label="JCS 抽選" icon={Ticket} active={currentTab === 'jcs_lottery'} onClick={setCurrentTab} />
-                    </div>
-                </div>
+                <nav className="max-w-md mx-auto mb-8 px-4">
+                    <div className="bg-white p-1 rounded-lg shadow-sm border-2 border-slate-200 flex justify-around gap-1">
+                        {[
+                            { id: 'vendors', label: '攤商情報', icon: Rocket },
+                            { id: 'js_pre', label: 'JS 先行 (Online)', icon: ShoppingCart },
+                            { id: 'jcs_lottery', label: 'JCS 抽選', icon: Ticket }
+                        ].map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = currentTab === tab.id; // 注意：JF26Page 這裡是用 currentTab
 
+                            return (
+                                <button 
+                                    key={tab.id} 
+                                    onClick={() => setCurrentTab(tab.id)} 
+                                    className={`
+                                        flex-1                       /* 讓每個按鈕寬度平均 */
+                                        flex flex-col                /* 關鍵：垂直排列 (上圖下文) */
+                                        items-center justify-center 
+                                        gap-1                        /* 圖示跟文字的距離 */
+                                        py-2 px-0.5 sm:px-4          /* 調整內距 */
+                                        rounded 
+                                        font-black 
+                                        transition-all 
+                                        border-2 
+                                        ${isActive 
+                                            ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' 
+                                            : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                                        }
+                                    `}
+                                >
+                                    {/* 圖示 */}
+                                    <Icon size={20} className={isActive ? "animate-pulse" : ""} />
+                                    
+                                    {/* 文字：手機版設為 11px 避免過大 */}
+                                    <span className="text-[11px] sm:text-sm whitespace-nowrap">
+                                        {tab.label}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </nav>
                 {/* 內容區塊渲染 */}
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
                     {currentTab === 'vendors' && (
@@ -331,25 +374,43 @@ function BillWidget({ amount }) {
     const description = "此區只計算 JF26 相關團務費用";
 
     return (
-        <div className="flex flex-col items-end mr-1 pr-2 sm:mr-2 sm:pr-4 border-r border-slate-700 relative group">
+        <div className="
+            relative group border-r border-slate-700 mr-1 pr-2 sm:mr-2 sm:pr-4
+            flex w-full items-center justify-end gap-3   /* items-center 確保垂直置中 */
+            sm:w-auto sm:flex-col sm:items-end sm:gap-0  /* 電腦版維持原樣 */
+        ">
             <button 
                 type="button"
                 onClick={() => alert(description)}
-                className="mb-1 flex items-center gap-1.5 focus:outline-none group/btn"
+                className="
+                    focus:outline-none group/btn
+                    flex items-center gap-2
+                    sm:mb-1 sm:gap-1.5
+                "
             >
-                <span className="text-[10px] sm:text-xs text-slate-400 font-bold">
+                {/* 文字：手機版 14px */}
+                <span className="text-[16px] sm:text-base text-slate-400 font-bold whitespace-nowrap pt-0.5">
                     個人英雄帳單
                 </span>
+                
+                {/* 提示 Icon */}
                 <span className="text-[10px] text-yellow-500 group-hover/btn:text-yellow-400 border-b border-dashed border-yellow-500/50 flex items-center gap-0.5 transition-colors">
-                    這是什麼? <HelpCircle size={10} />
+                    <span className="hidden sm:inline">這是什麼?</span>
+                    <HelpCircle className="block sm:hidden" size={14} /> {/* 手機版 icon 稍微調大一點點以配合文字 */}
+                    <HelpCircle className="hidden sm:block" size={10} />
                 </span>
             </button>
-            <div className="text-yellow-400 font-black leading-none drop-shadow-sm text-right">
-                <span className="text-xs mr-1 text-yellow-200">NT$</span>
-                <span className="text-lg sm:text-xl font-mono">
+
+            <div className="text-yellow-400 font-black drop-shadow-sm text-right flex items-center">
+                <span className="text-base mr-1 text-yellow-200 mt-1">NT$</span> {/* 微調 NT$ 的位置 */}
+                
+                {/* 金額：移除 leading-none，讓它自然垂直置中 */}
+                <span className="text-xl sm:text-xl font-mono">
                     {amount.toLocaleString()}
                 </span>
             </div>
+
+            {/* Tooltip (僅電腦版顯示) */}
             <div className="absolute top-12 right-0 w-max bg-slate-800 text-white text-xs p-2 rounded border border-yellow-400 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 hidden sm:block whitespace-pre-wrap text-left">
                {description}
             </div>
@@ -364,6 +425,9 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingIpsVendor, setViewingIpsVendor] = useState(null);
     
+    // ★ 新增 1: 用來強制觸發畫面更新的 state
+    const [readStatusTick, setReadStatusTick] = useState(0);
+
     // 預設資料
     const INITIAL_VENDORS = [
         {
@@ -384,6 +448,27 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         });
         return () => unsub();
     }, []);
+
+    // ★ 新增 2: 檢查是否為新項目的邏輯
+    const checkIsNew = (item) => {
+        const timeKey = item.updatedAt || item.createdAt;
+        if (!timeKey) return false;
+        
+        // 組合 LocalStorage 的 Key (每個使用者分開紀錄，並加上 vendor 前綴避免跟其他頁面衝突)
+        const localKey = `read_${currentUser?.id}_vendor_${item.id}`;
+        const lastRead = localStorage.getItem(localKey);
+        
+        if (!lastRead) return true; // 沒讀過就是 New
+        return new Date(timeKey) > new Date(lastRead); // 更新時間比讀取時間晚就是 New
+    };
+
+    // ★ 新增 3: 標記為已讀的邏輯
+    const markAsRead = (item) => {
+        const now = new Date().toISOString();
+        const localKey = `read_${currentUser?.id}_vendor_${item.id}`;
+        localStorage.setItem(localKey, now);
+        setReadStatusTick(t => t + 1); // 強制更新畫面，讓 NEW 消失
+    };
 
     const handleInitData = async () => {
         if (!confirm("確定要匯入預設資料嗎？")) return;
@@ -461,9 +546,25 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                     const showEllipsis = productList.length > 10;
                     const displayedProducts = showEllipsis ? productList.slice(0, 10) : productList;
 
+                    // ★ 計算是否顯示 NEW
+                    const isNew = checkIsNew(vendor);
+
                     return (
-                         <div key={vendor.id} className="bg-white rounded-xl border-4 border-slate-900 p-5 shadow-[8px_8px_0px_0px_#FACC15] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_#FACC15] transition-all duration-200 flex flex-col relative group">
+                        <div 
+                            key={vendor.id} 
+                            // ★ 加入 onClick 事件來消除 NEW
+                            onClick={() => markAsRead(vendor)}
+                            className="bg-white rounded-xl border-4 border-slate-900 p-5 shadow-[8px_8px_0px_0px_#FACC15] hover:-translate-y-1 hover:shadow-[10px_10px_0px_0px_#FACC15] transition-all duration-200 flex flex-col relative group cursor-pointer"
+                        >
                             
+                            {/* ★ NEW 的標籤 UI */}
+                            {isNew && (
+                                <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-20 border-2 border-white pointer-events-none animate-bounce">
+                                    NEW!
+                                </div>
+                            )}
+
+                            {/* 裝飾圓點 */}
                             <div className="absolute top-3 right-3 w-3 h-3 rounded-full bg-slate-200 border-2 border-slate-900 z-10"></div>
                             
                             <div className="flex justify-between items-start mb-4 pr-4 border-b-2 border-slate-100 pb-2">
@@ -471,8 +572,9 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                                 {isAdmin && (
                                     <div className="flex flex-col gap-1 ml-2 shrink-0">
                                         <div className="flex gap-1">
-                                            <button onClick={() => { setEditingVendor(vendor); setModalType('vendor'); }} className="p-1.5 bg-white text-slate-900 rounded border-2 border-slate-900 hover:bg-slate-100 shadow-[2px_2px_0px_0px_#000]" title="編輯"><Edit3 size={14} strokeWidth={2.5} /></button>
-                                            <button onClick={() => handleDelete(vendor.id)} className="p-1.5 bg-red-500 text-white rounded border-2 border-slate-900 hover:bg-red-600 shadow-[2px_2px_0px_0px_#000]" title="刪除"><Trash2 size={14} strokeWidth={2.5} /></button>
+                                            {/* 注意：這裡要加 e.stopPropagation() 避免點擊編輯時觸發外層的已讀 */}
+                                            <button onClick={(e) => { e.stopPropagation(); setEditingVendor(vendor); setModalType('vendor'); }} className="p-1.5 bg-white text-slate-900 rounded border-2 border-slate-900 hover:bg-slate-100 shadow-[2px_2px_0px_0px_#000]" title="編輯"><Edit3 size={14} strokeWidth={2.5} /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleDelete(vendor.id); }} className="p-1.5 bg-red-500 text-white rounded border-2 border-slate-900 hover:bg-red-600 shadow-[2px_2px_0px_0px_#000]" title="刪除"><Trash2 size={14} strokeWidth={2.5} /></button>
                                         </div>
                                     </div>
                                 )}
@@ -494,7 +596,7 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                                             <span key={idx} className="bg-yellow-50 text-slate-900 text-xs font-bold px-2 py-1 border-2 border-slate-200 transition-transform hover:scale-105 hover:border-slate-900 hover:bg-yellow-200">{ip}</span>
                                         ))}
                                         {showEllipsis && (
-                                            <button onClick={() => { setViewingIpsVendor(vendor); }} className="bg-slate-800 text-white text-xs font-bold px-2 py-1 border-2 border-slate-900 hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1"><List size={12}/> MORE...</button>
+                                            <button onClick={(e) => { e.stopPropagation(); setViewingIpsVendor(vendor); }} className="bg-slate-800 text-white text-xs font-bold px-2 py-1 border-2 border-slate-900 hover:bg-slate-700 transition-colors cursor-pointer flex items-center gap-1"><List size={12}/> MORE...</button>
                                         )}
                                     </div>
                                 </div>
@@ -530,14 +632,14 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
                             <div className="mt-6 space-y-3 pt-4 border-t-2 border-slate-100">
                                 <div className="flex gap-2">
                                     {vendor.preOrder?.url && (
-                                        <a href={vendor.preOrder.url} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-yellow-400 text-slate-900 text-center font-black rounded border-2 border-slate-900 hover:bg-yellow-300 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none"><ShoppingCart size={14} strokeWidth={3} /> 事前受注</a>
+                                        <a href={vendor.preOrder.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="flex-1 py-2 bg-yellow-400 text-slate-900 text-center font-black rounded border-2 border-slate-900 hover:bg-yellow-300 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none"><ShoppingCart size={14} strokeWidth={3} /> 事前受注</a>
                                     )}
                                     {vendor.postOrder?.url && (
-                                        <a href={vendor.postOrder.url} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-blue-500 text-white text-center font-black rounded border-2 border-slate-900 hover:bg-blue-400 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none"><Truck size={14} strokeWidth={3} /> 事後通販</a>
+                                        <a href={vendor.postOrder.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="flex-1 py-2 bg-blue-500 text-white text-center font-black rounded border-2 border-slate-900 hover:bg-blue-400 transition-colors flex items-center justify-center gap-1 text-xs shadow-[3px_3px_0px_0px_#0f172a] active:translate-y-0.5 active:shadow-none"><Truck size={14} strokeWidth={3} /> 事後通販</a>
                                     )}
                                 </div>
                                 {vendor.mainUrl && (
-                                    <a href={vendor.mainUrl} target="_blank" rel="noreferrer" className="block w-full py-2 bg-slate-100 text-slate-700 text-center font-black rounded border-2 border-slate-900 hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"><ExternalLink size={16} /> 攤商/活動官網</a>
+                                    <a href={vendor.mainUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="block w-full py-2 bg-slate-100 text-slate-700 text-center font-black rounded border-2 border-slate-900 hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"><ExternalLink size={16} /> 攤商/活動官網</a>
                                 )}
                             </div>
                         </div>
@@ -567,8 +669,8 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
             
             {/* IP Viewer Modal */}
             {viewingIpsVendor && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white w-full max-w-md rounded-xl shadow-2xl border-4 border-slate-900 overflow-hidden">
+                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setViewingIpsVendor(null)}>
+                    <div className="bg-white w-full max-w-md rounded-xl shadow-2xl border-4 border-slate-900 overflow-hidden" onClick={e => e.stopPropagation()}>
                         <div className="bg-slate-900 px-4 py-3 border-b-4 border-yellow-400 flex justify-between items-center">
                             <h3 className="font-black text-lg text-white flex items-center gap-2 truncate italic">
                                 <Tag size={20} className="text-yellow-400"/> {viewingIpsVendor.name}

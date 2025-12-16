@@ -465,16 +465,41 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             </section>
 
             <nav className="max-w-5xl mx-auto mt-8 px-4">
-                <div className="bg-white p-2 rounded-lg shadow-sm border-2 border-slate-200 inline-flex gap-2 flex-wrap sm:flex-nowrap">
+                {/* 容器改用 flex justify-around 確保按鈕平均分布 */}
+                <div className="bg-white p-1 rounded-lg shadow-sm border-2 border-slate-200 flex justify-around gap-1">
                     {[
                         { id: 'wishing', label: '許願池', icon: Heart },
                         { id: 'active', label: '揪團中', icon: Zap }, 
                         { id: 'completed', label: '已成團', icon: CheckCircle },
-                        { id: 'shipping', label: '國際運二補', icon: Plane },
+                        { id: 'shipping', label: '國際二補', icon: Plane }, // 稍微簡化文字長度
                         { id: 'closed', label: '已結案', icon: Archive }
                     ].map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 sm:px-6 py-2 rounded font-black text-sm flex items-center gap-2 transition-all flex-1 sm:flex-none justify-center border-2 ${activeTab === tab.id ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}>
-                            <tab.icon size={18} />{tab.label}
+                        <button 
+                            key={tab.id} 
+                            onClick={() => setActiveTab(tab.id)} 
+                            className={`
+                                flex-1                       /* 讓每個按鈕寬度平均 */
+                                flex flex-col                /* 關鍵：垂直排列 (上圖下文) */
+                                items-center justify-center 
+                                gap-1                        /* 圖示跟文字的距離 */
+                                py-2 px-0.5 sm:px-4          /* 調整內距，手機版左右不留白以爭取空間 */
+                                rounded 
+                                font-black 
+                                transition-all 
+                                border-2 
+                                ${activeTab === tab.id 
+                                    ? 'bg-slate-900 border-slate-900 text-yellow-400 shadow-md transform -translate-y-1' 
+                                    : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                                }
+                            `}
+                        >
+                            {/* 圖示 */}
+                            <tab.icon size={20} className={activeTab === tab.id ? "animate-pulse" : ""} />
+                            
+                            {/* 文字：手機版設為 11px 避免過大，電腦版回復 14px (sm:text-sm) */}
+                            <span className="text-[11px] sm:text-sm whitespace-nowrap">
+                                {tab.label}
+                            </span>
                         </button>
                     ))}
                 </div>
@@ -483,6 +508,13 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             <main className="max-w-5xl mx-auto px-4 py-8">
                 {activeTab === 'wishing' && (
                     <div>
+                        {/* ★ 新增：許願池說明文字 */}
+                        <div className="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r shadow-sm text-blue-900 text-sm font-bold flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                            <Info className="shrink-0 mt-0.5 text-blue-600" size={18} />
+                            <p className="leading-relaxed">
+                                葉葉沒有揪團，但想找人一起上車嗎？點擊按鈕留下你的願望，號召大家一起+1，說不定聖誕老葉葉就會幫你們開團喔！(?)
+                            </p>
+                        </div>
                         <div className="flex justify-end mb-6">
                             <button onClick={() => { setEditingWish(null); setModalType('wish'); }} className="px-6 py-2 bg-red-600 text-white border-2 border-red-800 rounded font-black hover:bg-red-700 flex items-center gap-2 shadow-[2px_2px_0px_0px_rgba(153,27,27,1)] active:translate-y-0.5 active:shadow-none transition-all italic"><Plus size={20} /> MAKE A WISH</button>
                         </div>
@@ -496,9 +528,9 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         onClick={() => markAsRead(wish, 'wish')}
                                     >
                                         {isNew && (
-                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none">
-                                                NEW!
-                                            </div>
+                                    <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
+                                        NEW!
+                                    </div>
                                         )}
 
                                         <div className="mb-3 w-full aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden"><ImageSlider images={wish.images} /></div>
@@ -534,6 +566,14 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
 
                 {(activeTab === 'active' || activeTab === 'completed' || activeTab === 'closed' || activeTab === 'shipping') && (
                     <div>
+                    {activeTab === 'active' && (
+                        <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r shadow-sm text-yellow-900 text-sm font-bold flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                                <Megaphone className="shrink-0 mt-0.5 text-yellow-600" size={18} />
+                                <p className="leading-relaxed">
+                                    葉葉揪團啦~~ 趕緊上車！或是你想要買自己的東西，那就發起委託，讓葉葉幫你發個人車車~
+                                </p>
+                         </div>
+                        )}
                         <div className="mb-6 bg-slate-200 p-3 rounded-lg flex flex-col sm:flex-row items-center gap-4 border-2 border-slate-300">
                             <div className="flex items-center gap-2 font-bold text-slate-700 text-sm">
                                 <Search size={18} className="text-slate-500"/> {activeTab === 'active' ? '搜尋收單區間:' : '搜尋發售區間:'}
@@ -574,10 +614,10 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         onClick={() => activeTab === 'active' && markAsRead(group, 'group')}
                                     >
                                         {isNew && (
-                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none">
-                                                NEW!
-                                            </div>
-                                        )}
+                                                        <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
+                                                            NEW!
+                                                        </div>
+                                                    )}
 
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex flex-col gap-1">
