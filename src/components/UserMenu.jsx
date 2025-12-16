@@ -1,4 +1,5 @@
 // src/components/UserMenu.jsx
+import { Link } from 'react-router-dom';
 import { useState } from "react";
 import { Crown, LogOut, Camera, Key, Tag, Info, Clock, Calendar } from 'lucide-react';
 import { doc, updateDoc } from "firebase/firestore";
@@ -61,6 +62,16 @@ export default function UserMenu({ currentUser, onLogout, onOpenModal }) {
                     <button onClick={() => { setMenuOpen(false); onOpenModal('changeAvatar'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Camera size={16} /> 更換英雄頭像</button>
                     <button onClick={() => { setMenuOpen(false); onOpenModal('changePwd'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Key size={16} /> 修改密碼</button>
                     <div className="border-t-2 border-slate-100 my-1"></div>
+                    {currentUser?.name === '葉葉' && (
+                        <Link
+                            to="/admin/dashboard" // 👈 指向新的儀表板
+                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-yellow-50 hover:text-yellow-700 transition-colors border-b border-gray-100"
+                            role="menuitem"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            ⚙️ 團務後台管理
+                        </Link>
+                        )}
                     <button onClick={onLogout} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2 font-black"><LogOut size={16} /> 登出</button>
                 </div>
             )}

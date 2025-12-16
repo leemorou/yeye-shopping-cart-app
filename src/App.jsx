@@ -7,7 +7,8 @@ import { School } from 'lucide-react';
 import LoginScreen from "./components/LoginScreen";
 import JF26Page from "./components/JF26Page"; 
 import MusicPlayer from './components/MusicPlayer';
-import Dashboard from "./components/Dashboard"; // ★ 引入剛剛拆出去的 Dashboard
+import Dashboard from "./components/Dashboard";
+import AdminDashboard from './components/AdminDashboard'; 
 
 import { db, auth } from "./firebase";
 
@@ -77,8 +78,17 @@ export default function App() {
                 {appUser && <MusicPlayer />}
                 <Routes>
                     <Route path="/" element={!appUser ? <LoginScreen users={usersData} onLogin={handleLogin} /> : <Navigate to="/home" replace />} />
+                    
                     <Route path="/home" element={appUser ? <Dashboard appUser={appUser} usersData={usersData} handleLogout={handleLogout} /> : <Navigate to="/" replace />} />
+                    
                     <Route path="/jf26" element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} />
+                    
+                    {/* 🛡️ 修正：只有名字是 '葉葉' 的人可以進入後台，其他人踢回首頁 */}
+                    <Route path="/admin/dashboard" element={
+                        appUser?.name === '葉葉' 
+                        ? <AdminDashboard /> 
+                        : <Navigate to="/" replace />
+                    } />
                 </Routes>
             </div>
         </HashRouter>
