@@ -1,6 +1,7 @@
 // src/components/Dashboard.jsx
 import { useState, useEffect, useMemo } from "react"; 
 import { Link } from 'react-router-dom';
+// ★ 確認引入 setDoc
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { 
     ShoppingBag, Heart, Users, CheckCircle, Package, Plus, LogOut, 
@@ -8,7 +9,6 @@ import {
     Zap, Shield, Star, Megaphone, Save, X, Search, Plane, Calculator, DollarSign, Crown, Info, Clock, Tag
 } from 'lucide-react'; 
 
-// ★ 因為 Dashboard 現在在 components 資料夾內，所以引入同層元件用 ./
 import WishForm from "./WishForm";
 import GroupForm from "./GroupForm";
 import PersonalRequestForm from "./PersonalRequestForm";
@@ -22,11 +22,9 @@ import Modal from "./Modal";
 import ImageSlider from "./ImageSlider";
 import RichTextEditor from "./RichTextEditor";
 
-// ★ 引入剛剛建立的模組化元件
 import Header from "./Header";
 import BillWidget from "./BillWidget";
 
-// ★ 往上一層找 firebase
 import { db } from "../firebase"; 
 
 const ADMIN_USER = "葉葉";
@@ -109,22 +107,21 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
 
     useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd]);
 
-    // --- 邏輯功能 ---
+    // --- 邏輯功能 (已更新為雲端+本地同步版) ---
 
     const checkIsNew = (item, type) => {
         const timeKey = item.updatedAt || item.createdAt;
         if (!timeKey) return false;
 
-        // 統一 Key 格式：例如 'wish_docId123' 或 'group_docId456'
+        // 統一 Key 格式
         const itemKey = `${type}_${item.id}`; 
 
         // 1. 優先讀取：Firebase 資料庫裡的紀錄 (跟著帳號走)
-        // 確保 appUser 存在且有 readHistory 欄位
         let lastRead = appUser?.readHistory?.[itemKey];
 
         // 2. 備用讀取：如果資料庫還沒載入，先看瀏覽器暫存 (提升體驗)
         if (!lastRead) {
-            const localKey = `read_${appUser?.id}_${itemKey}`;
+            const localKey = `read_${appUser?.id}_${type}_${item.id}`;
             lastRead = localStorage.getItem(localKey);
         }
 
@@ -135,13 +132,13 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
     const markAsRead = async (item, type) => {
         const now = new Date().toISOString();
         const itemKey = `${type}_${item.id}`;
-        
-        // 1. 先寫入 LocalStorage (為了讓 UI 瞬間反應，不用等網路)
-        const localKey = `read_${appUser?.id}_${itemKey}`;
+        const localKey = `read_${appUser?.id}_${type}_${item.id}`;
+
+        // 1. 本地更新 (讓 UI 瞬間變色，不用等伺服器)
         localStorage.setItem(localKey, now);
         setReadStatusTick(t => t + 1); // 強制觸發畫面重繪，讓 NEW 消失
 
-        // 2. 再寫入 Firebase (為了跨瀏覽器/永久儲存)
+        // 2. 雲端同步 (使用 setDoc + merge)
         if (appUser && appUser.id) {
             try {
                 const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id);
@@ -157,6 +154,8 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
         }
     };
     
+    // ... 其餘功能保持不變 ...
+
     const handleChangePassword = async (newPwd) => {
         if (!appUser) return;
         await updateDoc(doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id), { password: newPwd });
@@ -544,10 +543,11 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         className="bg-white rounded-lg p-4 shadow-sm border-2 border-slate-200 hover:border-slate-900 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition-all flex flex-col h-full relative group"
                                         onClick={() => markAsRead(wish, 'wish')}
                                     >
+                                        {/* ★ 修改這裡：加上 animate-bounce */}
                                         {isNew && (
-                                    <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
-                                        NEW!
-                                    </div>
+                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
+                                                NEW!
+                                            </div>
                                         )}
 
                                         <div className="mb-3 w-full aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden"><ImageSlider images={wish.images} /></div>
@@ -630,11 +630,12 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         className={`bg-white rounded-lg p-5 shadow-sm border-2 border-slate-900 flex flex-col relative overflow-visible ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`}
                                         onClick={() => activeTab === 'active' && markAsRead(group, 'group')}
                                     >
+                                        {/* ★ 修改這裡：加上 animate-bounce */}
                                         {isNew && (
-                                                        <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
-                                                            NEW!
-                                                        </div>
-                                                    )}
+                                            <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md transform -rotate-12 z-50 border-2 border-white pointer-events-none animate-bounce">
+                                                NEW!
+                                            </div>
+                                        )}
 
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex flex-col gap-1">

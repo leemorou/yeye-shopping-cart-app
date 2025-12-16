@@ -449,48 +449,52 @@ function VendorsTab({ currentUser, isAdmin, modalType, setModalType }) {
         return () => unsub();
     }, []);
 
-    // ★ 修改 1: 雲端 + 本地 雙重檢查
-    const checkIsNew = (item) => {
+    const checkIsNew = (item, type) => {
         const timeKey = item.updatedAt || item.createdAt;
         if (!timeKey) return false;
-        
-        const itemKey = `vendor_${item.id}`; // 統一 Key 格式
-        
-        // 優先讀取：Firebase 資料庫裡的紀錄 (跟著帳號走)
-        let lastRead = currentUser?.readHistory?.[itemKey];
 
-        // 備用讀取：如果資料庫還沒載入，先看瀏覽器暫存 (提升體驗)
+        const itemKey = `${type}_${item.id}`;
+
+        // 1. 優先讀取：Firebase 資料庫 (appUser.readHistory)
+        // 這是關鍵：只要 appUser 載入成功，這裡就會抓到你存在雲端的已讀時間
+        let lastRead = appUser?.readHistory?.[itemKey];
+
+        // 2. 備用讀取：如果 Firebase 還沒載入或沒資料，先看 LocalStorage (提升體驗)
         if (!lastRead) {
-            const localKey = `read_${currentUser?.id}_${itemKey}`;
+            const localKey = `read_${appUser?.id}_${type}_${item.id}`;
             lastRead = localStorage.getItem(localKey);
         }
-        
-        if (!lastRead) return true; // 兩邊都沒紀錄，就是 New
+
+        if (!lastRead) return true; // 兩邊都沒紀錄 = NEW
         return new Date(timeKey) > new Date(lastRead);
     };
 
-    // ★ 修改 2: 同步寫入 Firebase
-    const markAsRead = async (item) => {
+    const markAsRead = async (item, type) => {
         const now = new Date().toISOString();
-        const itemKey = `vendor_${item.id}`;
-        
-        // 1. 先寫入 LocalStorage (為了讓 UI 瞬間反應，不用等網路)
-        const localKey = `read_${currentUser?.id}_${itemKey}`;
-        localStorage.setItem(localKey, now);
-        setReadStatusTick(t => t + 1); // 強制觸發畫面重繪，讓 NEW 消失
+        const itemKey = `${type}_${item.id}`;
+        // 加個 ?. 避免登出時報錯
+        const localKey = `read_${appUser?.id}_${type}_${item.id}`;
 
-        // 2. 再寫入 Firebase (為了跨瀏覽器/永久儲存)
-        if (currentUser && currentUser.id) {
+        // 1. 本地更新 (讓 UI 瞬間變色，不用等伺服器回應)
+        localStorage.setItem(localKey, now);
+        setReadStatusTick(t => t + 1);
+
+        // 2. 雲端同步
+        if (appUser && appUser.id) {
             try {
-                const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', currentUser.id);
-                // 使用 merge: true，只更新 readHistory 裡的特定欄位，不影響其他資料
+                const userRef = doc(db, 'artifacts', 'default-app-id', 'public', 'data', 'users', appUser.id);
+                
+                // ★ 關鍵：使用 setDoc 搭配 { merge: true }
+                // 這會自動建立 readHistory 物件(如果不存在)，或者更新裡面的 key，
+                // 且絕對不會覆蓋掉使用者的名字、頭像等其他資料。
                 await setDoc(userRef, {
                     readHistory: {
                         [itemKey]: now
                     }
                 }, { merge: true });
+
             } catch (e) {
-                console.error("雲端已讀同步失敗", e);
+                console.error("同步已讀狀態失敗", e);
             }
         }
     };
