@@ -83,12 +83,14 @@ export default function App() {
                     
                     <Route path="/jf26" element={appUser ? <JF26Page currentUser={appUser} /> : <Navigate to="/" replace />} />
                     
-                    {/* 🛡️ 修正：只有名字是 '葉葉' 的人可以進入後台，其他人踢回首頁 */}
-                    <Route path="/admin/dashboard" element={
-                        appUser?.name === '葉葉' 
-                        ? <AdminDashboard /> 
-                        : <Navigate to="/" replace />
-                    } />
+                    <Route 
+                        path="/admin/dashboard" 
+                        element={
+                            appUser?.name === '葉葉' 
+                            ? <AdminDashboard currentUser={appUser} />  // 🟢 這裡要傳 props
+                            : <Navigate to="/home" replace />           // 🔴 建議沒權限是回 home 而不是 login
+                        } 
+                    />
                 </Routes>
             </div>
         </HashRouter>
