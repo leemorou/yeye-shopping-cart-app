@@ -1,28 +1,23 @@
 // src/components/AdminGroupManager.jsx
-
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase'; 
 import { collection, getDocs, doc, updateDoc, addDoc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
-// 引入必要的圖示
 import { 
     Trash2, Plus, Save, ArrowLeft, Package, Edit3, X, User, 
     ShoppingCart, Calculator, Truck, ListFilter, Tag, CreditCard, 
-    Clock, Calendar, ChevronRight, ChevronDown, Folder 
+    Clock, Calendar, ChevronRight, ChevronDown, Folder,
+    Info // 🟢 補上缺失的圖示
 } from 'lucide-react';
 
-const GROUP_TYPES = ["預購", "現貨", "個人委託"];
-const STATUS_STEPS = ["下單中", "已下單", "日本出貨", "抵達日倉", "轉運中", "抵台", "二補計算", "已結案"];
-const PAYMENT_STATUS_OPTIONS = ["未收款", "商品收款中", "商品已收款", "二補收款中", "二補已收款", "商品+二補收款中", "商品+二補已收款"];
-
-const AdminGroupManager = () => {
+const AdminGroupManager = ({ onOpenSecondPay }) => {
   const [groups, setGroups] = useState([]);
   const [users, setUsers] = useState([]); 
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupOrders, setGroupOrders] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState({}); // 🟢 控制資料夾展開/收合
+  const [expandedFolders, setExpandedFolders] = useState({}); 
   const navigate = useNavigate();
 
   const GROUPS_PATH = ["artifacts", "default-app-id", "public", "data", "groups"];
@@ -38,7 +33,6 @@ const AdminGroupManager = () => {
       const groupData = groupSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       setGroups(groupData);
 
-      // 🟢 預設打開第一個分類
       if (groupData.length > 0) {
         const firstCat = groupData[0].sheetCategory || "未分類";
         setExpandedFolders({ [firstCat]: true });
@@ -56,7 +50,6 @@ const AdminGroupManager = () => {
 
   useEffect(() => { initData(); }, []);
 
-  // 🟢 核心邏輯：將扁平資料轉換為樹狀分組
   const groupedGroups = useMemo(() => {
     const groupsMap = {};
     groups.forEach(group => {
@@ -98,6 +91,8 @@ const AdminGroupManager = () => {
       if (groupData.trackingStatus === '已結案') {
           groupData.isArchived = true;
           groupData.status = '已結案'; 
+      } else if (groupData.trackingStatus === '二補計算') {
+          groupData.status = '二補計算';
       } else {
           groupData.isArchived = false;
           groupData.status = '已成團'; 
@@ -150,7 +145,6 @@ const AdminGroupManager = () => {
     }
   };
 
-  // --- 表單控制邏輯 (維持你原本的邏輯) ---
   const handleItemChange = (index, field, value) => {
     const newItems = [...selectedGroup.items];
     newItems[index][field] = value;
@@ -192,43 +186,56 @@ const AdminGroupManager = () => {
       return order.items?.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0) || 0;
   };
 
-  if (loading) return <div className="p-10 text-center">載入中...</div>;
+  if (loading) return <div className="p-10 text-center font-bold text-slate-400 animate-pulse uppercase tracking-widest italic">Syncing Base...</div>;
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden text-sm">
+    <div className="flex h-[calc(100vh-160px)] bg-gray-100 overflow-hidden text-sm rounded-2xl border-4 border-slate-900 shadow-[8px_8px_0px_0px_#0f172a]">
       
       {/* 🟢 左側：樹狀清單區域 */}
-      <div className="w-1/4 bg-white border-r border-gray-200 flex flex-col shadow-inner">
-        <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-          <h2 className="font-black text-slate-700 tracking-tighter uppercase">團務樹狀總表</h2>
+      <div className="w-1/3 md:w-1/4 bg-white border-r-4 border-slate-900 flex flex-col">
+        <div className="p-4 border-b-4 border-slate-900 bg-slate-900 flex justify-between items-center text-white">
+          <h2 className="font-black italic tracking-tighter uppercase flex items-center gap-2">
+              <Folder size={18} className="text-yellow-400"/> Mission List
+          </h2>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-slate-50">
           {Object.entries(groupedGroups).map(([category, items]) => (
-            <div key={category} className="rounded overflow-hidden">
-                {/* 📂 分類大標題 */}
+            <div key={category} className="mb-1">
                 <button 
                     onClick={() => toggleFolder(category)}
-                    className="w-full flex items-center gap-2 p-2 hover:bg-slate-100 text-left font-bold text-slate-600 border-b border-slate-50"
+                    className="w-full flex items-center gap-2 p-2 hover:bg-white text-left font-black text-slate-700 transition-colors uppercase tracking-tight"
                 >
                     {expandedFolders[category] ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
-                    <Folder size={16} className="text-yellow-500 fill-yellow-500"/>
-                    <span className="truncate flex-1">{category}</span>
-                    <span className="text-[10px] bg-slate-200 px-1.5 rounded-full">{items.length}</span>
+                    <Folder size={16} className={`transition-colors ${expandedFolders[category] ? 'text-yellow-500 fill-yellow-500' : 'text-slate-400'}`}/>
+                    <span className="truncate flex-1 text-[10px]">{category}</span>
+                    <span className="text-[10px] bg-slate-900 text-white px-1.5 rounded font-mono">{items.length}</span>
                 </button>
                 
-                {/* 📜 團務子項目 */}
                 {expandedFolders[category] && (
-                    <div className="bg-slate-50/50">
+                    <div className="space-y-0.5 mt-0.5">
                         {items.map(group => (
                             <div 
                                 key={group.id} 
                                 onClick={() => handleSelectGroup(group)}
-                                className={`pl-8 pr-4 py-2.5 cursor-pointer border-l-2 transition-all hover:bg-blue-50/50 ${selectedGroup?.id === group.id ? 'bg-blue-50 border-l-blue-600 font-bold text-blue-700' : 'border-l-transparent text-slate-500'}`}
+                                className={`group ml-4 pl-4 pr-2 py-2.5 cursor-pointer border-l-4 transition-all flex justify-between items-center rounded-r-lg ${selectedGroup?.id === group.id ? 'bg-blue-600 border-yellow-400 text-white shadow-md' : 'border-slate-200 text-slate-500 hover:bg-slate-200/50 hover:border-slate-400'}`}
                             >
-                                <div className="truncate">{group.title}</div>
-                                <div className="text-[10px] opacity-60 flex justify-between mt-1">
-                                    <span>{group.trackingStatus}</span>
+                                <div className="truncate flex-1">
+                                    <div className="truncate font-bold leading-tight">{group.title}</div>
+                                    <div className={`text-[9px] font-black uppercase mt-0.5 ${selectedGroup?.id === group.id ? 'text-blue-100' : 'text-slate-400'}`}>
+                                        {group.trackingStatus}
+                                    </div>
                                 </div>
+
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation(); 
+                                        onOpenSecondPay(group.id);
+                                    }}
+                                    className={`p-1.5 rounded transition-all transform hover:scale-110 active:scale-95 ${selectedGroup?.id === group.id ? 'text-yellow-400 hover:bg-blue-700' : 'text-slate-400 hover:bg-white hover:text-blue-600 shadow-sm border border-transparent hover:border-slate-200'}`}
+                                    title="設定國際運二補"
+                                >
+                                    <Calculator size={16} strokeWidth={2.5} />
+                                </button>
                             </div>
                         ))}
                     </div>
@@ -239,42 +246,51 @@ const AdminGroupManager = () => {
       </div>
 
       {/* 🟢 右側：編輯內容區 */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
         {selectedGroup ? (
           <>
-            <div className="p-4 bg-white border-b flex justify-between items-center shadow-sm z-10">
+            <div className="p-4 bg-white border-b-4 border-slate-900 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 z-10">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2 text-blue-800"><Edit3 size={20}/> {selectedGroup.title}</h2>
-                <p className="text-xs text-slate-400">目前分類：{selectedGroup.sheetCategory || "未分類"}</p>
+                <h2 className="text-xl font-black flex items-center gap-2 text-slate-900 italic uppercase tracking-tighter">
+                    <Edit3 size={20} className="text-blue-600"/> {selectedGroup.title}
+                </h2>
+                <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 border border-slate-200 uppercase tracking-widest">
+                        Folder: {selectedGroup.sheetCategory || "Unclassified"}
+                    </span>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleDeleteGroup(selectedGroup.id)} className="px-4 py-2 text-red-600 hover:bg-red-50 rounded flex items-center gap-2 font-bold"><Trash2 size={18}/> 刪除</button>
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2 shadow-lg font-bold">{saving ? "儲存中..." : "儲存所有變更"}</button>
+              <div className="flex gap-2 w-full md:w-auto">
+                <button onClick={() => handleDeleteGroup(selectedGroup.id)} className="flex-1 md:flex-none px-4 py-2 text-red-600 hover:bg-red-50 border-2 border-transparent hover:border-red-200 rounded font-black text-xs uppercase transition-all">Delete</button>
+                <button onClick={handleSave} disabled={saving} className="flex-1 md:flex-none px-6 py-2 bg-slate-900 text-yellow-400 rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2 shadow-[4px_4px_0px_0px_#000] font-black text-xs uppercase tracking-widest active:translate-y-0.5 active:shadow-none transition-all">
+                    {saving ? "Saving..." : "Save Mission"}
+                </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 bg-gray-100">
-              <div className="max-w-5xl mx-auto space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50/50">
+              <div className="max-w-4xl mx-auto space-y-6">
                 
-                {/* 1. 基本資訊與分類控制 */}
-                <div className="bg-white p-6 rounded-lg shadow-sm border">
-                    <h3 className="text-lg font-bold mb-4 text-gray-700 border-b pb-2">基本資訊與分類</h3>
-                    <div className="grid grid-cols-4 gap-4">
-                        <div className="col-span-2">
-                            <label className="block text-xs font-bold text-gray-500 mb-1">團務名稱</label>
-                            <input type="text" value={selectedGroup.title} onChange={e => setSelectedGroup({...selectedGroup, title: e.target.value})} className="w-full border p-2 rounded" />
+                {/* 1. 基本資訊 */}
+                <div className="bg-white p-6 rounded-xl border-2 border-slate-900 shadow-sm">
+                    <h3 className="text-sm font-black mb-4 text-slate-900 border-b-2 border-slate-100 pb-2 flex items-center gap-2 uppercase italic tracking-tighter">
+                        <Info size={16} className="text-blue-600"/> Basic Intel
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="md:col-span-2">
+                            <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-widest">Mission Title</label>
+                            <input type="text" value={selectedGroup.title} onChange={e => setSelectedGroup({...selectedGroup, title: e.target.value})} className="w-full border-2 border-slate-200 p-2 rounded-lg font-bold focus:border-slate-900 outline-none transition-colors" />
                         </div>
                         
-                        {/* 🟢 分類控制：決定該團屬於哪個標題資料夾 */}
-                        <div className="col-span-2">
-                            <label className="block text-xs font-bold text-blue-600 mb-1">標題分類 (變更後會移動資料夾)</label>
+                        <div className="md:col-span-2">
+                            <label className="block text-[10px] font-black text-blue-600 mb-1 uppercase tracking-widest">Folder Name (Sorting)</label>
                             <input 
                                 list="category-list"
                                 type="text" 
                                 value={selectedGroup.sheetCategory || ""} 
                                 onChange={e => setSelectedGroup({...selectedGroup, sheetCategory: e.target.value})} 
-                                className="w-full border p-2 rounded bg-blue-50 border-blue-200" 
-                                placeholder="例如：團務累計總表 2025.11"
+                                className="w-full border-2 border-blue-200 p-2 rounded-lg font-bold bg-blue-50/50 focus:border-blue-600 outline-none transition-colors" 
+                                placeholder="e.g. 2025.12 Jump Festa"
                             />
                             <datalist id="category-list">
                                 {Object.keys(groupedGroups).map(cat => <option key={cat} value={cat} />)}
@@ -282,97 +298,101 @@ const AdminGroupManager = () => {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1"><Tag size={14}/> 訂單類型</label>
-                            <select value={selectedGroup.type || "預購"} onChange={e => setSelectedGroup({...selectedGroup, type: e.target.value})} className="w-full border p-2 rounded">
-                                {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-widest">Group Type</label>
+                            <select value={selectedGroup.type || "預購"} onChange={e => setSelectedGroup({...selectedGroup, type: e.target.value})} className="w-full border-2 border-slate-200 p-2 rounded-lg font-bold bg-white">
+                                {["預購", "現貨", "個人委託"].map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1"><ListFilter size={14}/> 物流狀態</label>
-                            <select value={selectedGroup.trackingStatus || "下單中"} onChange={e => setSelectedGroup({...selectedGroup, trackingStatus: e.target.value})} className="w-full border p-2 rounded">
-                                {STATUS_STEPS.map(s => <option key={s} value={s}>{s}</option>)}
+                            <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-widest">Tracking Status</label>
+                            <select value={selectedGroup.trackingStatus || "下單中"} onChange={e => setSelectedGroup({...selectedGroup, trackingStatus: e.target.value})} className="w-full border-2 border-slate-200 p-2 rounded-lg font-bold bg-white">
+                                {["下單中", "已下單", "日本出貨", "抵達日倉", "轉運中", "抵台", "二補計算", "已結案"].map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">匯率</label>
-                            <input type="number" value={selectedGroup.exchangeRate} onChange={e => setSelectedGroup({...selectedGroup, exchangeRate: Number(e.target.value)})} className="w-full border p-2 rounded" />
+                            <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase tracking-widest">Exchange Rate</label>
+                            <input type="number" step="0.001" value={selectedGroup.exchangeRate} onChange={e => setSelectedGroup({...selectedGroup, exchangeRate: Number(e.target.value)})} className="w-full border-2 border-slate-200 p-2 rounded-lg font-mono font-bold" />
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-blue-600 mb-1"><Truck size={14}/> 境內運 (日幣)</label>
-                            <input type="number" value={selectedGroup.domesticShippingFee || 0} onChange={e => setSelectedGroup({...selectedGroup, domesticShippingFee: Number(e.target.value)})} className="w-full border p-2 rounded bg-blue-50" />
-                        </div>
-                        <div className="col-span-2">
-                            <label className="block text-xs font-bold text-gray-500 mb-1"><CreditCard size={14}/> 收款狀態</label>
-                            <select value={selectedGroup.paymentStatus || "未收款"} onChange={e => setSelectedGroup({...selectedGroup, paymentStatus: e.target.value})} className="w-full border p-2 rounded">
-                                {PAYMENT_STATUS_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1"><Clock size={14}/> 截止日期</label>
-                            <input type="datetime-local" value={selectedGroup.deadline || ""} onChange={e => setSelectedGroup({...selectedGroup, deadline: e.target.value})} className="w-full border p-2 rounded" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1"><Calendar size={14}/> 發售月份</label>
-                            <input type="text" value={selectedGroup.releaseDate || ""} onChange={e => setSelectedGroup({...selectedGroup, releaseDate: e.target.value})} className="w-full border p-2 rounded" placeholder="2025.11"/>
+                            <label className="block text-[10px] font-black text-blue-600 mb-1 uppercase tracking-widest">Domestic Ship (¥)</label>
+                            <input type="number" value={selectedGroup.shippingFee || 0} onChange={e => setSelectedGroup({...selectedGroup, shippingFee: Number(e.target.value)})} className="w-full border-2 border-blue-100 p-2 rounded-lg font-mono font-bold bg-blue-50/30" />
                         </div>
                     </div>
                 </div>
 
                 {/* 2. 商品明細 */}
-                <div className="bg-white p-6 rounded-lg shadow-sm border">
-                    <div className="flex justify-between items-center mb-4 border-b pb-2">
-                        <h3 className="text-lg font-bold text-gray-700 flex items-center gap-2"><Package size={20}/> 商品清單</h3>
-                        <button onClick={handleAddItem} className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-bold hover:bg-green-200">+ 新增商品</button>
+                <div className="bg-white p-6 rounded-xl border-2 border-slate-900 shadow-sm">
+                    <div className="flex justify-between items-center mb-4 border-b-2 border-slate-100 pb-2">
+                        <h3 className="text-sm font-black text-slate-900 flex items-center gap-2 uppercase italic tracking-tighter">
+                            <Package size={16} className="text-blue-600"/> Items List
+                        </h3>
+                        <button onClick={handleAddItem} className="px-3 py-1 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 transition-colors">+ Add Item</button>
                     </div>
                     <div className="space-y-2">
                         {selectedGroup.items?.map((item, index) => (
-                            <div key={index} className="flex gap-2 items-center bg-gray-50 p-2 rounded">
-                                <input type="text" placeholder="名稱" value={item.name} onChange={e => handleItemChange(index, 'name', e.target.value)} className="flex-1 p-1 border rounded text-sm"/>
-                                <input type="text" placeholder="規格" value={item.spec} onChange={e => handleItemChange(index, 'spec', e.target.value)} className="w-24 p-1 border rounded text-sm"/>
-                                <input type="number" placeholder="日幣" value={item.price} onChange={e => handleItemChange(index, 'price', e.target.value)} className="w-24 p-1 border rounded text-sm font-bold text-blue-600"/>
-                                <button onClick={() => handleDeleteItem(index)} className="text-gray-400 hover:text-red-500"><X size={18}/></button>
+                            <div key={index} className="flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-slate-100 group">
+                                <input type="text" placeholder="Name" value={item.name} onChange={e => handleItemChange(index, 'name', e.target.value)} className="flex-1 p-1.5 border-2 border-transparent bg-transparent focus:bg-white focus:border-slate-200 rounded text-sm font-bold"/>
+                                <input type="text" placeholder="Spec" value={item.spec} onChange={e => handleItemChange(index, 'spec', e.target.value)} className="w-24 p-1.5 border-2 border-transparent bg-transparent focus:bg-white focus:border-slate-200 rounded text-sm font-bold"/>
+                                <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-200">
+                                    <span className="text-[10px] font-bold text-slate-400">¥</span>
+                                    <input type="number" value={item.price} onChange={e => handleItemChange(index, 'price', e.target.value)} className="w-16 text-sm font-black text-blue-600 outline-none text-right"/>
+                                </div>
+                                <button onClick={() => handleDeleteItem(index)} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><X size={18}/></button>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {/* 3. 成員喊單 */}
-                <div className="bg-white p-6 rounded-lg shadow-sm border border-blue-200">
-                    <div className="flex justify-between items-center mb-4 border-b pb-2">
-                        <h3 className="text-lg font-bold text-blue-800 flex items-center gap-2"><User size={20}/> 成員喊單登記</h3>
-                        <button onClick={handleAddOrder} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-bold hover:bg-blue-200">+ 新增訂單</button>
+                <div className="bg-white p-6 rounded-xl border-2 border-slate-900 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none"><User size={120}/></div>
+                    <div className="flex justify-between items-center mb-4 border-b-2 border-slate-100 pb-2">
+                        <h3 className="text-sm font-black text-slate-900 flex items-center gap-2 uppercase italic tracking-tighter relative z-10">
+                            <User size={16} className="text-blue-600"/> Hero Orders
+                        </h3>
+                        <button onClick={handleAddOrder} className="px-3 py-1 bg-blue-600 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-sm relative z-10">+ New Order</button>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-4 relative z-10">
                         {groupOrders.map((order, oidx) => {
                             const totalJpy = calculateOrderTotal(order);
                             const totalTwd = Math.ceil(totalJpy * (selectedGroup.exchangeRate || 0));
                             return (
-                                <div key={order.id} className="border rounded-lg p-4 bg-gray-50">
+                                <div key={order.id} className="border-2 border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:border-blue-200 transition-colors">
                                     <div className="flex justify-between items-center mb-3">
-                                        <select value={order.userId} onChange={(e) => handleOrderUserChange(oidx, e.target.value)} className="p-1 border rounded font-bold text-blue-600">
-                                            <option value="">-- 請選擇會員 --</option>
+                                        <select value={order.userId} onChange={(e) => handleOrderUserChange(oidx, e.target.value)} className="p-1.5 border-2 border-slate-200 rounded-lg font-black text-blue-600 bg-white text-sm outline-none focus:border-blue-400">
+                                            <option value="">-- Select Member --</option>
                                             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                         </select>
-                                        <div className="text-right font-black text-red-600 italic">NT$ {totalTwd}</div>
+                                        <div className="text-right flex flex-col items-end">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Est. Subtotal</span>
+                                            <div className="font-black text-red-600 italic text-lg">NT$ {totalTwd.toLocaleString()}</div>
+                                        </div>
                                     </div>
-                                    <div className="pl-4 border-l-2 border-slate-300 space-y-2">
+                                    <div className="pl-4 border-l-4 border-slate-200 space-y-2">
                                         {order.items?.map((item, iidx) => (
                                             <div key={iidx} className="flex gap-2 items-center">
                                                 <select 
                                                     value={item.itemId} 
                                                     onChange={(e) => handleOrderItemChange(oidx, iidx, 'itemId', e.target.value)}
-                                                    className="flex-1 p-1 border rounded text-xs"
+                                                    className="flex-1 p-1.5 border border-slate-200 rounded bg-white text-xs font-bold"
                                                 >
-                                                    <option value="">-- 選擇商品 --</option>
+                                                    <option value="">-- Choose Item --</option>
                                                     {selectedGroup.items?.map(p => <option key={p.id} value={p.id}>{p.name} (¥{p.price})</option>)}
                                                 </select>
-                                                <input type="number" value={item.quantity} onChange={(e) => handleOrderItemChange(oidx, iidx, 'quantity', e.target.value)} className="w-12 p-1 border rounded text-center font-bold"/>
-                                                <button onClick={() => handleOrderRemoveItem(oidx, iidx)} className="text-gray-400 hover:text-red-500"><X size={16}/></button>
+                                                <div className="flex items-center gap-1 bg-slate-200 px-2 rounded">
+                                                    <span className="text-[10px] font-bold text-slate-500">x</span>
+                                                    <input type="number" value={item.quantity} onChange={(e) => handleOrderItemChange(oidx, iidx, 'quantity', e.target.value)} className="w-10 p-1 bg-transparent text-center font-black text-slate-700 outline-none text-xs"/>
+                                                </div>
+                                                <button onClick={() => handleOrderRemoveItem(oidx, iidx)} className="text-slate-300 hover:text-red-500 transition-colors"><X size={16}/></button>
                                             </div>
                                         ))}
-                                        <button onClick={() => handleOrderAddItem(oidx)} className="text-[10px] text-blue-500 underline mt-1">+ 追加品項</button>
+                                        <button onClick={() => handleOrderAddItem(oidx)} className="text-[10px] font-black text-blue-500 hover:text-blue-700 transition-colors uppercase tracking-widest flex items-center gap-1 mt-2">
+                                            <Plus size={12}/> Append Item
+                                        </button>
                                     </div>
-                                    <div className="text-right mt-2"><button onClick={() => handleDeleteOrder(oidx)} className="text-[10px] text-red-300 hover:text-red-600 underline">刪除此單</button></div>
+                                    <div className="text-right mt-3 pt-2 border-t border-slate-200">
+                                        <button onClick={() => handleDeleteOrder(oidx)} className="text-[10px] font-bold text-slate-300 hover:text-red-400 transition-colors uppercase italic tracking-tighter">Remove Order Record</button>
+                                    </div>
                                 </div>
                             );
                         })}
@@ -383,10 +403,9 @@ const AdminGroupManager = () => {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-            <ShoppingCart size={80} className="mb-4 opacity-20"/>
-            <p className="text-lg font-black italic tracking-widest uppercase">Select a mission from the list</p>
-            <p className="text-xs font-bold opacity-60">請從左側點擊資料夾，開始管理您的英雄任務</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-200 bg-slate-50/30 uppercase tracking-[0.2em]">
+            <ShoppingCart size={100} strokeWidth={1} className="mb-4 opacity-20 text-slate-400"/>
+            <p className="text-xl font-black italic text-slate-300">Select Mission</p>
           </div>
         )}
       </div>

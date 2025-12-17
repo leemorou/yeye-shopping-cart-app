@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, setDoc, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
 import { 
     ArrowLeft, FileSpreadsheet, ListChecks, Megaphone, FileText, 
-    Save, Plus, Trash2, Users, ShoppingBag 
+    Save, Plus, Trash2, Users, ShoppingBag, Calculator 
 } from 'lucide-react';
 
 import { db } from '../firebase'; 
@@ -16,35 +16,30 @@ import RichTextEditor from "./RichTextEditor";
 import JSAdminManager from './JF26JSPreOrderAdmin';
 import GroupForm from "./GroupForm";
 import Modal from "./Modal";
+import SecondPaymentForm from "./SecondPaymentForm"; // 🟢 確保引入二補表單
 
-export default function AdminDashboard({ currentUser }) { // 🟢 確保接收 currentUser props
-  const [activeTab, setActiveTab] = useState('groups'); 
+export default function AdminDashboard({ currentUser }) {
   const navigate = useNavigate();
-
+  
+  // 1. 所有 Hook (useState/useEffect) 必須放在組件最頂層
+  const [activeTab, setActiveTab] = useState('groups'); 
   const [bulletin, setBulletin] = useState("");
   const [tempBulletin, setTempBulletin] = useState("");
   const [miscCharges, setMiscCharges] = useState([]);
   const [usersData, setUsersData] = useState([]);
+  const [groups, setGroups] = useState([]); // 🟢 補上 groups 狀態
+  const [orders, setOrders] = useState([]); // 🟢 補上 orders 狀態
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [miscForm, setMiscForm] = useState({ title: '', amount: '', targetUserId: '', note: '', paymentStatus: '未付款' });
+  const [secondPayGroupId, setSecondPayGroupId] = useState(null);
 
   const isAdmin = currentUser?.name === "葉葉" || currentUser?.id === "yeye";
+  const selectedSPGroup = groups.find(g => g.id === secondPayGroupId);
 
-  // 🟢 安全檢查
-  if (!isAdmin) {
-    // 這裡可以保留簡單的提示，確保就算路由攔截失敗，組件內容也不會載入
-    return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100">
-              <div className="bg-white p-10 rounded-2xl border-4 border-slate-900 shadow-[8px_8px_0px_0px_#ef4444] text-center">
-                  <h2 className="text-3xl font-black text-red-500 mb-4 italic">ACCESS DENIED</h2>
-                  <p className="font-bold text-slate-600">此為英雄禁區，請速速離開！</p>
-                  <button onClick={() => navigate('/')} className="mt-6 px-6 py-2 bg-slate-900 text-white font-bold rounded">回首頁</button>
-              </div>
-          </div>
-    );
-}
-
+  // 2. 監聽資料庫
   useEffect(() => {
+      if (!isAdmin) return;
+
       const unsubBulletin = onSnapshot(doc(db, "artifacts", "default-app-id", "public", "data", "system", "bulletin"), (docSnap) => {
           if (docSnap.exists()) {
               setBulletin(docSnap.data().content);
@@ -53,10 +48,28 @@ export default function AdminDashboard({ currentUser }) { // 🟢 確保接收 c
       });
       const unsubMisc = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "miscCharges"), (snap) => setMiscCharges(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
       const unsubUsers = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "users"), (snap) => setUsersData(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+      const unsubGroups = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), (snap) => setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+      const unsubOrders = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), (snap) => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
 
-      return () => { unsubBulletin(); unsubMisc(); unsubUsers(); };
-  }, []);
+      return () => { 
+        unsubBulletin(); unsubMisc(); unsubUsers(); unsubGroups(); unsubOrders(); 
+      };
+  }, [isAdmin]);
 
+  // 3. 安全檢查：放在 Hook 之後
+  if (!isAdmin) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100">
+              <div className="bg-white p-10 rounded-2xl border-4 border-slate-900 shadow-[8px_8px_0px_0px_#ef4444] text-center">
+                  <h2 className="text-3xl font-black text-red-500 mb-4 italic">ACCESS DENIED</h2>
+                  <p className="font-bold text-slate-600">此為英雄禁區，請速速離開！</p>
+                  <button onClick={() => navigate('/')} className="mt-6 px-6 py-2 bg-slate-900 text-white font-bold rounded">回首頁</button>
+              </div>
+          </div>
+      );
+  }
+
+  // --- 邏輯處理函式 ---
   const handleCreateGroup = async (data) => {
       try {
           await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { 
@@ -123,10 +136,10 @@ export default function AdminDashboard({ currentUser }) { // 🟢 確保接收 c
 
             <nav className="flex flex-wrap justify-center gap-2 bg-slate-800 p-1 rounded-lg">
               {[
-                  { id: 'import', label: 'Excel匯入', icon: FileSpreadsheet },
                   { id: 'groups', label: '團務管理', icon: ListChecks },
                   { id: 'misc', label: '雜項費用', icon: FileText },
                   { id: 'js_orders', label: 'JF26對帳', icon: ShoppingBag },
+                  { id: 'import', label: 'Excel匯入', icon: FileSpreadsheet },
                   { id: 'bulletin', label: '公告編輯', icon: Megaphone },
                   { id: 'users', label: '成員管理', icon: Users },
               ].map(tab => (
@@ -158,13 +171,14 @@ export default function AdminDashboard({ currentUser }) { // 🟢 確保接收 c
                             <Plus size={18} /> 發起新團務
                         </button>
                     </div>
-                    <AdminGroupManager />
+                    {/* 🟢 修改：將二補設定功能交給 AdminGroupManager 內部處理，或統一在這裡開啟 */}
+                    <AdminGroupManager onOpenSecondPay={(id) => setSecondPayGroupId(id)} />
                 </div>
             )}
 
             {activeTab === 'js_orders' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="mb-6">
+                    <div className="mb-6 px-4">
                         <h2 className="text-2xl font-black text-slate-800 italic">JF26 JS ONLINE 後台控制台</h2>
                         <p className="text-slate-500 font-bold text-sm">在這裡調整匯率、運費，並更新每個人的購買狀態。</p>
                     </div>
@@ -175,7 +189,7 @@ export default function AdminDashboard({ currentUser }) { // 🟢 確保接收 c
             {activeTab === 'users' && (
                 <div className="bg-white p-10 rounded-2xl border-4 border-slate-900 text-center font-bold text-slate-400">
                     <Users size={48} className="mx-auto mb-4 opacity-20" />
-                    成員權限與黑名單管理開發中...
+                    成員管理開發中...
                 </div>
             )}
 
@@ -251,8 +265,25 @@ export default function AdminDashboard({ currentUser }) { // 🟢 確保接收 c
         </div>
       </main>
 
+      {/* 🔴 Modal 區塊 */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="發起新團務">
           <GroupForm onSubmit={handleCreateGroup} onCancel={() => setIsModalOpen(false)} submitLabel="發佈團購" />
+      </Modal>
+
+      <Modal isOpen={!!secondPayGroupId} onClose={() => setSecondPayGroupId(null)} title="管理國際運二補">
+        {selectedSPGroup && (
+            <SecondPaymentForm 
+                group={selectedSPGroup} 
+                orders={orders.filter(o => o.groupId === selectedSPGroup.id)} 
+                currentUser={currentUser} 
+                onUpdate={async (data) => {
+                    await updateDoc(doc(db, "artifacts", "default-app-id", "public", "data", "groups", selectedSPGroup.id), { secondPayment: data });
+                    alert("二補資訊已儲存並同步至前台！");
+                    setSecondPayGroupId(null);
+                }} 
+                isReadOnly={false} 
+            />
+        )}
       </Modal>
     </div>
   );

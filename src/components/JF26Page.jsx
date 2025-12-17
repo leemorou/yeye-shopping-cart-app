@@ -6,7 +6,7 @@ import {
     Crown, LogOut, Camera, Key, Calendar, Clock, CheckCircle, ArrowLeft,
     Ticket, DollarSign, Package, HelpCircle, Clock3,
     ZoomIn, ZoomOut, RotateCcw, RefreshCcw, Save, 
-    Calculator, FileText, CheckSquare, Square, Truck as TruckIcon, PackageCheck, AlertTriangle
+    Calculator, FileText, CheckSquare, Square, Truck as TruckIcon, PackageCheck, AlertTriangle, Settings,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch, setDoc } from "firebase/firestore";
@@ -21,7 +21,6 @@ import ChangeNameForm from "./ChangeNameForm";
 import ChangeAvatarForm from "./ChangeAvatarForm";
 import ChangePasswordForm from "./ChangePasswordForm";
 
-// 引入拆分出去的 JS 先行分頁
 import JSPreOrderTab from './JSPreOrderTab';
 
 const ADMIN_USER = "葉葉";
@@ -150,7 +149,7 @@ export default function JF26Page({ currentUser }) {
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-20 selection:bg-yellow-400 selection:text-black">
-           {/* Header */}
+          {/* Header */}
             <header className="sticky top-0 z-30 bg-slate-900 border-b-4 border-yellow-400 px-4 py-3 shadow-md">
                 <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
                     <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -178,35 +177,52 @@ export default function JF26Page({ currentUser }) {
                                 <img src={currentUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.name}`} alt="avatar" className="w-full h-full object-cover" />
                                 {isMember && (
                                     <div className="absolute -top-1 -right-1 bg-purple-600 rounded-full p-0.5 border border-white">
-                                            <Crown size={8} className="text-white fill-white" />
+                                        <Crown size={8} className="text-white fill-white" />
                                     </div>
                                 )}
                             </button>
                             
                             {menuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border-2 border-slate-900 py-1 z-50 animate-in fade-in slide-in-from-top-2">
-                                            <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className="text-xs font-black text-slate-500 flex items-center gap-1">
-                                                        <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
-                                                        PLUS 會員
-                                                    </span>
-                                                    {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
-                                                </div>
-                                                <button 
-                                                    onClick={handleToggleMembership}
-                                                    className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && currentUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
-                                                >
-                                                    {isMember 
-                                                        ? (currentUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
-                                                        : "訂閱會員 (NT$90/月均分)"}
-                                                </button>
-                                            </div>
+                                    <div className="px-3 py-2 border-b-2 border-slate-100 bg-slate-50">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs font-black text-slate-500 flex items-center gap-1">
+                                                <Crown size={12} className={isMember ? "text-purple-600 fill-purple-600" : "text-slate-300"} />
+                                                PLUS 會員
+                                            </span>
+                                            {isMember && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold">SUBSCRIBED</span>}
+                                        </div>
+                                        <button 
+                                            onClick={handleToggleMembership}
+                                            className={`w-full text-xs font-bold py-1.5 rounded border-2 transition-all ${isMember && currentUser.memberValidUntil ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200' : isMember ? 'bg-white border-slate-300 text-slate-500 hover:bg-red-50 hover:text-red-500 hover:border-red-300' : 'bg-purple-600 border-purple-800 text-white hover:bg-purple-700'}`}
+                                        >
+                                            {isMember 
+                                                ? (currentUser.memberValidUntil ? "恢復續訂 (取消申請中)" : "取消訂閱 (保留30天)") 
+                                                : "訂閱會員 (NT$90/月均分)"}
+                                        </button>
+                                    </div>
+                                    
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeName'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Tag size={16} /> 修改暱稱</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changeAvatar'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Camera size={16} /> 更換英雄頭像</button>
                                     <button onClick={() => { setMenuOpen(false); setModalType('changePwd'); }} className="w-full px-4 py-2 text-left text-sm hover:bg-yellow-50 flex items-center gap-2 text-slate-700 font-bold"><Key size={16} /> 修改密碼</button>
+                                    
+                                    {/* 🟢 這裡確保 Link 和 Settings 都已定義 */}
+                                    {currentUser?.name === '葉葉' && (
+                                        <div className="border-t border-slate-100 mt-1">
+                                            <Link
+                                                to="/admin/dashboard"
+                                                className="block px-4 py-2 text-sm text-blue-700 font-black hover:bg-blue-50 transition-colors flex items-center gap-2"
+                                                onClick={() => setMenuOpen(false)}
+                                            >
+                                                <Settings size={16} /> 團務後台管理
+                                            </Link>
+                                        </div>
+                                    )}
+
                                     <div className="border-t-2 border-slate-100 my-1"></div>
-                                    <button onClick={handleLogout} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2 font-black"><LogOut size={16} /> 登出</button>
+                                    <button onClick={handleLogout} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2 font-black">
+                                        <LogOut size={16} /> 登出
+                                    </button>
                                 </div>
                             )}
                         </div>

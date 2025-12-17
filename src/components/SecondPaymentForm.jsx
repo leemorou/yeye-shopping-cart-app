@@ -1,279 +1,185 @@
 // src/components/SecondPaymentForm.jsx
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calculator, Package, Save, Plane, Info, Wallet, Download } from 'lucide-react'; // ★ 新增 Download
-import * as XLSX from 'xlsx'; // ★ 新增 xlsx
+import React, { useState } from 'react';
+import { Scale, Calculator, Save, Download, Info, Package } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
-const ADMIN_USER = "葉葉";
-const RATE_PER_KG = 250; // 每公斤費率
+const RATE_PER_KG = 250; // 每公斤運費費率
 
-export default function SecondPaymentForm({ group, orders, currentUser, onUpdate }) {
-    const isAdmin = currentUser?.name === ADMIN_USER;
+export default function SecondPaymentForm({ group, orders, currentUser, onUpdate, isReadOnly = false }) {
+    const isAdminMode = !isReadOnly && (currentUser?.name === "葉葉" || currentUser?.id === "yeye");
     
-    // 初始化資料
+    // 狀態初始化：從 Firebase 讀取已存的重量設定
     const [weights, setWeights] = useState(group.secondPayment?.weights || {});
     const [boxWeight, setBoxWeight] = useState(group.secondPayment?.boxWeight || 0);
     const [minChargeDiff, setMinChargeDiff] = useState(group.secondPayment?.minChargeDiff || 0);
 
-    // 商品清單
-    const uniqueItems = useMemo(() => group.items || [], [group.items]);
+    // 1. 整理「所有被訂購過」的商品品項 (用於管理員輸入重量)
+    const allOrderedItems = useMemo(() => {
+        const itemIds = new Set();
+        orders.forEach(order => order.items?.forEach(i => itemIds.add(i.itemId)));
+        return group.items?.filter(item => itemIds.has(item.id)) || [];
+    }, [group.items, orders]);
 
-    // 計算邏輯
-    const calculations = useMemo(() => {
-        let totalProductWeight = 0;
-        let totalItemsCount = 0;
-        const uniqueUserIds = new Set();
+    // 2. 計算基礎分攤值
+    const groupOrders = orders.filter(o => o.groupId === group.id);
+    let totalGroupItemsQty = 0;
+    groupOrders.forEach(o => o.items.forEach(i => totalGroupItemsQty += (Number(i.quantity) || 0)));
+    
+    const uniqueUserCount = new Set(groupOrders.map(o => o.userId)).size;
 
-        orders.forEach(order => {
-            uniqueUserIds.add(order.userId); 
-            order.items.forEach(item => {
-                const w = parseFloat(weights[item.id] || weights[item.itemId] || 0); // 相容兩種 ID 格式
-                totalProductWeight += w * item.quantity;
-                totalItemsCount += item.quantity;
-            });
-        });
+    // 包材費分攤 (總包材重 * 費率 / 總件數)
+    const boxCostPerItem = totalGroupItemsQty > 0 ? (boxWeight * RATE_PER_KG) / totalGroupItemsQty : 0;
+    // 低消補貼分攤 (總補貼 / 總人數)
+    const minChargePerPerson = uniqueUserCount > 0 ? minChargeDiff / uniqueUserCount : 0;
 
-        // 1. 重量與運費計算 (這是給物流公司的)
-        const totalWeight = totalProductWeight + parseFloat(boxWeight || 0);
-        const billingWeight = Math.max(0.3, totalWeight); // 最低 0.3kg
-        const totalShippingAmount = Math.round(billingWeight * RATE_PER_KG);
+    // 3. 計算每位英雄的二補明細
+    const userPayments = groupOrders.reduce((acc, order) => {
+        let userShippingTotal = 0;
+        let details = [];
 
-        // 2. 箱子費分攤 (依商品數)
-        const boxCost = (parseFloat(boxWeight || 0) * RATE_PER_KG);
-        const boxCostPerItem = totalItemsCount > 0 ? boxCost / totalItemsCount : 0;
-
-        // 3. 低消差額分攤 (這筆錢只算在團員頭上，不加進總運費)
-        const minChargeTotal = parseFloat(minChargeDiff || 0);
-        const userCount = uniqueUserIds.size;
-        const minChargePerPerson = userCount > 0 ? minChargeTotal / userCount : 0;
-
-        return {
-            totalWeight: totalWeight.toFixed(2),
-            billingWeight: billingWeight.toFixed(2),
-            totalAmount: totalShippingAmount, 
-            totalItemsCount,
-            boxCostPerItem,
-            minChargeTotal,
-            minChargePerPerson
-        };
-    }, [weights, boxWeight, minChargeDiff, orders]);
-
-    // 儲存處理
-    const handleSave = () => {
-        onUpdate({
-            weights,
-            boxWeight: parseFloat(boxWeight),
-            minChargeDiff: parseFloat(minChargeDiff)
-        });
-    };
-
-    // ★ 新增：匯出 Excel 功能
-    const handleExportExcel = () => {
-        // 1. 整理每個人的數據 (合併同一人的多張訂單)
-        const userGroups = {};
-
-        orders.forEach(order => {
-            if (!userGroups[order.userId]) {
-                userGroups[order.userId] = {
-                    name: order.userName,
-                    items: [],
-                    totalCost: 0
-                };
-            }
+        order.items?.forEach(i => {
+            const itemWeight = parseFloat(weights[i.itemId] || 0);
+            // 單件運費 = (商品重量 * 費率) + 分攤包材費
+            const singleItemShipping = (itemWeight * RATE_PER_KG) + boxCostPerItem;
+            const totalItemShipping = singleItemShipping * i.quantity;
             
-            let orderShippingCost = 0;
-            order.items.forEach(item => {
-                const w = parseFloat(weights[item.id] || weights[item.itemId] || 0);
-                const itemShipping = (w * RATE_PER_KG) + calculations.boxCostPerItem;
-                orderShippingCost += itemShipping * item.quantity;
-                userGroups[order.userId].items.push(`${item.name} x${item.quantity}`);
+            userShippingTotal += totalItemShipping;
+            details.push({
+                name: i.name,
+                qty: i.quantity,
+                weight: itemWeight,
+                subtotal: totalItemShipping
             });
-
-            userGroups[order.userId].totalCost += orderShippingCost;
         });
 
-        // 2. 轉換成 Excel 格式 (加上低消分攤)
-        const excelData = Object.values(userGroups).map(user => ({
-            "買家": user.name,
-            "商品內容": user.items.join("\n"),
-            "二補運費 (TWD)": Math.round(user.totalCost + calculations.minChargePerPerson),
-            "備註": ""
-        }));
+        // 加上人頭分攤的低消補貼
+        userShippingTotal += minChargePerPerson;
 
-        // 3. 建立並下載檔案
-        const ws = XLSX.utils.json_to_sheet(excelData);
-        // 設定欄寬
-        ws['!cols'] = [{ wch: 15 }, { wch: 40 }, { wch: 15 }, { wch: 20 }];
-        
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "二補明細");
-        XLSX.writeFile(wb, `二補明細_${group.title}.xlsx`);
+        if (!acc[order.userId]) {
+            acc[order.userId] = { 
+                name: order.userName, 
+                details: details, 
+                total: userShippingTotal 
+            };
+        } else {
+            acc[order.userId].details.push(...details);
+            acc[order.userId].total += userShippingTotal;
+        }
+        return acc;
+    }, {});
+
+    const handleSave = () => {
+        onUpdate({ weights, boxWeight, minChargeDiff });
+        alert("二補重量設定已儲存！");
     };
 
     return (
-        <div className="space-y-6 font-sans text-slate-800">
-            {/* 頂部資訊看板 */}
-            <div className="bg-slate-900 text-white p-4 rounded-xl border-2 border-yellow-400 shadow-lg">
-                <h4 className="font-black italic text-lg text-yellow-400 mb-3 flex items-center gap-2 transform -skew-x-3">
-                    <Plane size={20} /> 國際運費試算 (INTL SHIPPING)
-                </h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="bg-slate-800 p-2 rounded border border-slate-600 flex flex-col justify-center">
-                        <span className="text-slate-400 block text-xs mb-1">總計費重 (Billing Weight)</span>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-xl font-mono font-bold text-white">{calculations.billingWeight} kg</span>
-                            <span className="text-[10px] text-slate-500">(實重 {calculations.totalWeight} kg)</span>
+        <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
+            {/* 🟢 管理員：商品重量輸入區 */}
+            {isAdminMode && (
+                <div className="bg-white p-5 rounded-xl border-4 border-slate-900 shadow-[4px_4px_0px_0px_#000]">
+                    <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 uppercase italic border-b-2 pb-2">
+                        <Scale size={20} className="text-blue-600"/> Weight Control Panel
+                    </h3>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-slate-50 p-3 rounded-lg border-2 border-slate-200">
+                            <label className="block text-[10px] font-black text-slate-500 mb-1 uppercase">紙箱/包材總重 (kg)</label>
+                            <input type="number" step="0.01" className="w-full bg-transparent font-mono font-bold text-lg outline-none" value={boxWeight} onChange={e => setBoxWeight(e.target.value)} />
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-lg border-2 border-slate-200">
+                            <label className="block text-[10px] font-black text-slate-500 mb-1 uppercase">未滿低消補貼 (TWD)</label>
+                            <input type="number" className="w-full bg-transparent font-mono font-bold text-lg outline-none" value={minChargeDiff} onChange={e => setMinChargeDiff(e.target.value)} />
                         </div>
                     </div>
-                    <div className="bg-slate-800 p-2 rounded border border-slate-600 flex flex-col justify-center">
-                        <span className="text-slate-400 block text-xs mb-1">總二補金額 (Total Cost)</span>
-                        <span className="text-xl font-mono font-bold text-yellow-400">NT$ {calculations.totalAmount}</span>
-                    </div>
-                </div>
-                <div className="mt-2 text-xs text-slate-400 flex items-center gap-1">
-                    <Info size={12} /> 費率：NT$250/kg (未滿 0.3kg 以 0.3kg 計)
-                </div>
-            </div>
 
-            {/* 重量輸入區 (表格) */}
-            <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                    <thead className="bg-slate-100 border-b-2 border-slate-900 text-slate-700 font-bold">
-                        <tr>
-                            <th className="p-3 text-left">項目名稱</th>
-                            <th className="p-3 text-center w-24">數值</th>
-                            <th className="p-3 text-right">分攤試算</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                        {/* 1. 商品列表 */}
-                        {uniqueItems.map(item => {
-                            const w = parseFloat(weights[item.id] || 0);
-                            const itemCost = Math.round((w * RATE_PER_KG) + calculations.boxCostPerItem);
-                            return (
-                                <tr key={item.id} className="bg-white hover:bg-slate-50">
-                                    <td className="p-3 font-medium text-slate-900">{item.name} <span className="text-xs text-slate-400 block">{item.spec}</span></td>
-                                    <td className="p-3 text-center">
-                                        {isAdmin ? (
-                                            <input 
-                                                type="number" 
-                                                step="0.01"
-                                                className="w-20 border-2 border-slate-300 rounded px-1 text-center font-bold focus:border-yellow-400 focus:outline-none"
-                                                placeholder="kg"
-                                                value={weights[item.id] || ''}
-                                                onChange={(e) => setWeights({...weights, [item.id]: e.target.value})}
-                                            />
-                                        ) : (
-                                            <span className="font-mono">{w || '-'} kg</span>
-                                        )}
-                                    </td>
-                                    <td className="p-3 text-right font-bold text-slate-700">
-                                        NT$ {itemCost}<span className="text-[10px] text-slate-400 font-normal">/個</span>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                        
-                        {/* 2. 箱子包材 */}
-                        <tr className="bg-yellow-50/50">
-                            <td className="p-3 font-black text-slate-800 flex items-center gap-2">
-                                <Package size={16} /> 箱子包材 (Shared Box)
-                            </td>
-                            <td className="p-3 text-center">
-                                {isAdmin ? (
+                    <p className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-widest">Individual Item Weights</p>
+                    <div className="space-y-3">
+                        {allOrderedItems.map(item => (
+                            <div key={item.id} className="flex items-center gap-3 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                <span className="flex-1 text-xs font-bold text-slate-700 truncate">{item.name}</span>
+                                <div className="flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-300">
                                     <input 
-                                        type="number" 
-                                        step="0.01"
-                                        className="w-20 border-2 border-yellow-400 rounded px-1 text-center font-bold focus:outline-none bg-white"
-                                        placeholder="kg"
-                                        value={boxWeight}
-                                        onChange={(e) => setBoxWeight(e.target.value)}
+                                        type="number" step="0.001" placeholder="0.000"
+                                        className="w-20 text-right font-mono font-black text-blue-600 outline-none"
+                                        value={weights[item.id] || ''}
+                                        onChange={e => setWeights({...weights, [item.id]: e.target.value})}
                                     />
-                                ) : (
-                                    <span className="font-mono">{boxWeight} kg</span>
-                                )}
-                            </td>
-                            <td className="p-3 text-right text-xs text-slate-500">
-                                <span className="font-bold text-slate-700 block">NT$ {Math.round(calculations.boxCostPerItem)}/個</span>
-                                (依商品數分攤)
-                            </td>
-                        </tr>
-
-                        {/* 3. 低消差額 */}
-                        <tr className="bg-blue-50/50">
-                            <td className="p-3 font-black text-slate-800 flex items-center gap-2">
-                                <Wallet size={16} /> 低消差額 (Min Charge)
-                            </td>
-                            <td className="p-3 text-center">
-                                {isAdmin ? (
-                                    <input 
-                                        type="number" 
-                                        className="w-20 border-2 border-blue-400 rounded px-1 text-center font-bold focus:outline-none bg-white"
-                                        placeholder="NT$"
-                                        value={minChargeDiff}
-                                        onChange={(e) => setMinChargeDiff(e.target.value)}
-                                    />
-                                ) : (
-                                    <span className="font-mono">NT$ {minChargeDiff}</span>
-                                )}
-                            </td>
-                            <td className="p-3 text-right text-xs text-slate-500">
-                                <span className="font-bold text-slate-700 block">NT$ {Math.round(calculations.minChargePerPerson)}/人</span>
-                                (依人數均分)
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            {/* 團員分攤預覽 */}
-            <div className="bg-slate-50 p-4 rounded-lg border-2 border-slate-200">
-                <h5 className="font-bold text-slate-700 mb-2 border-b border-slate-300 pb-1 flex justify-between items-end">
-                    <span>團員二補試算</span>
-                    <span className="text-[10px] text-slate-400 font-normal">公式：(商品重x250) + (箱子費x數量) + 低消均分</span>
-                </h5>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {orders.map(order => {
-                        let userTotalShipping = 0;
-                        order.items.forEach(i => {
-                            const w = parseFloat(weights[i.id] || weights[i.itemId] || 0);
-                            const itemShipping = (w * RATE_PER_KG) + calculations.boxCostPerItem;
-                            userTotalShipping += itemShipping * i.quantity;
-                        });
-                        
-                        userTotalShipping += calculations.minChargePerPerson;
-                        
-                        return (
-                            <div key={order.userId} className="flex justify-between text-sm hover:bg-slate-100 p-1 rounded">
-                                <span className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-700">{order.userName}</span>
-                                    <span className="text-xs text-slate-400">({order.items.reduce((a,b)=>a+b.quantity,0)} 件)</span>
-                                </span>
-                                <span className="font-mono font-black text-slate-900">NT$ {Math.round(userTotalShipping)}</span>
+                                    <span className="text-[10px] font-bold text-slate-400">kg</span>
+                                </div>
                             </div>
-                        );
-                    })}
+                        ))}
+                    </div>
+
+                    <button onClick={handleSave} className="w-full mt-6 py-3 bg-slate-900 text-yellow-400 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-slate-800 shadow-[4px_4px_0px_0px_#ccc] transition-all active:translate-y-1 active:shadow-none">
+                        <Save size={18} /> SAVE SETTINGS
+                    </button>
                 </div>
+            )}
+
+            {/* 📊 試算結果 (明細表格) */}
+            <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                    <h3 className="font-black text-slate-900 flex items-center gap-2 italic">
+                        <Calculator size={20} className="text-red-600"/> 二補費用明細表
+                    </h3>
+                    {isReadOnly && <span className="text-[10px] font-black text-blue-600 border-b-2 border-blue-600 pb-0.5">READ ONLY MODE</span>}
+                </div>
+
+                {Object.values(userPayments).map((user, idx) => (
+                    <div key={idx} className="bg-white border-2 border-slate-900 rounded-xl overflow-hidden shadow-sm">
+                        <div className="bg-slate-900 text-white px-4 py-2 flex justify-between items-center">
+                            <span className="font-black italic uppercase tracking-tighter">{user.name}</span>
+                            <span className="font-mono font-black text-yellow-400">Total: ${Math.round(user.total)}</span>
+                        </div>
+                        <div className="p-0">
+                            <table className="w-full text-[11px] text-left">
+                                <thead className="bg-slate-50 text-slate-400 font-bold uppercase border-b">
+                                    <tr>
+                                        <th className="p-2">Item</th>
+                                        <th className="p-2 text-center">Qty</th>
+                                        <th className="p-2 text-center">Weight</th>
+                                        <th className="p-2 text-right">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {user.details.map((d, i) => (
+                                        <tr key={i}>
+                                            <td className="p-2 font-bold text-slate-700">{d.name}</td>
+                                            <td className="p-2 text-center text-slate-500">{d.qty}</td>
+                                            <td className="p-2 text-center font-mono text-slate-400">{d.weight}kg</td>
+                                            <td className="p-2 text-right font-mono font-bold">${Math.round(d.subtotal)}</td>
+                                        </tr>
+                                    ))}
+                                    {minChargeDiff > 0 && (
+                                        <tr className="bg-yellow-50/50">
+                                            <td colSpan={3} className="p-2 text-slate-500 italic">低消分攤費 (Person Share)</td>
+                                            <td className="p-2 text-right font-mono font-bold">${Math.round(minChargePerPerson)}</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ))}
             </div>
 
-            {/* 只有管理員能儲存與匯出 */}
-            {isAdmin && (
-                <div className="flex justify-end pt-2 gap-2">
-                    {/* ★ 新增：匯出 Excel 按鈕 */}
-                    <button 
-                        onClick={handleExportExcel}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded font-black border-2 border-green-800 hover:bg-green-700 shadow-[4px_4px_0px_0px_#166534] active:translate-y-0.5 active:shadow-none transition-all"
-                    >
-                        <Download size={18} /> 匯出 Excel
-                    </button>
-
-                    <button 
-                        onClick={handleSave}
-                        className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-yellow-400 rounded font-black border-2 border-slate-900 hover:bg-slate-800 shadow-[4px_4px_0px_0px_#FACC15] active:translate-y-0.5 active:shadow-none transition-all"
-                    >
-                        <Save size={18} /> 儲存設定
-                    </button>
+            {isReadOnly && (
+                <div className="bg-slate-100 p-4 rounded-xl border-2 border-dashed border-slate-300 flex items-start gap-3">
+                    <Info size={18} className="text-slate-400 shrink-0 mt-0.5" />
+                    <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
+                        計算公式：[(商品重量 × {RATE_PER_KG}) + (包材總重 × {RATE_PER_KG} / 總件數)] × 數量 + (低消差額 / 總人數)。
+                        所有金額採四捨五入計算。
+                    </p>
                 </div>
             )}
         </div>
     );
+}
+
+// 輔助 Hook
+function useMemo(factory, deps) {
+    const [val, setVal] = React.useState(factory);
+    React.useEffect(() => setVal(factory()), deps);
+    return val;
 }
