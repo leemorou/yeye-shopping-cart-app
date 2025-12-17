@@ -25,7 +25,7 @@ const RATE_PER_KG = 250; // 國際運費費率 (與後台一致)
 export default function JSPreOrderTab({ currentUser, onImageClick }) {
     const [orders, setOrders] = useState([]);
     const [settings, setSettings] = useState({
-        exchangeRate: 0.24,
+        exchangeRate: 0.23,
         totalShippingJPY: 0,
         status: '搶購中',
         secondPayment: { weights: {}, boxWeight: 0 }

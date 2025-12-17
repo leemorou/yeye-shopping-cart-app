@@ -1,10 +1,9 @@
-// src/components/AdminDashboard.jsx (修正版)
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot, doc, setDoc, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, updateDoc, addDoc, deleteDoc, writeBatch, getDoc } from "firebase/firestore";
 import { 
     ArrowLeft, FileSpreadsheet, ListChecks, Megaphone, FileText, 
-    Save, Plus, Trash2, Users, ShoppingBag, Calculator 
+    Save, Plus, Trash2, Users, ShoppingBag, Ticket, Database, Edit3, X, CheckCircle, Clock
 } from 'lucide-react';
 
 import { db } from '../firebase'; 
@@ -16,27 +15,36 @@ import RichTextEditor from "./RichTextEditor";
 import JSAdminManager from './JF26JSPreOrderAdmin';
 import GroupForm from "./GroupForm";
 import Modal from "./Modal";
-import SecondPaymentForm from "./SecondPaymentForm"; // 🟢 確保引入二補表單
+import SecondPaymentForm from "./SecondPaymentForm";
+
+const USER_MAPPING = {
+    "titi": "踢", "xiaomei": "玫", "heng": "姮", "baobao": "寶",
+    "yeye": "葉", "Sjie": "S姐", "qiaoyu": "魚", "teacher": "澄",
+    "ann": "安", "Aurora": "Aurora"
+};
 
 export default function AdminDashboard({ currentUser }) {
   const navigate = useNavigate();
   
-  // 1. 所有 Hook (useState/useEffect) 必須放在組件最頂層
   const [activeTab, setActiveTab] = useState('groups'); 
   const [bulletin, setBulletin] = useState("");
   const [tempBulletin, setTempBulletin] = useState("");
   const [miscCharges, setMiscCharges] = useState([]);
   const [usersData, setUsersData] = useState([]);
-  const [groups, setGroups] = useState([]); // 🟢 補上 groups 狀態
-  const [orders, setOrders] = useState([]); // 🟢 補上 orders 狀態
+  const [groups, setGroups] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [miscForm, setMiscForm] = useState({ title: '', amount: '', targetUserId: '', note: '', paymentStatus: '未付款' });
   const [secondPayGroupId, setSecondPayGroupId] = useState(null);
 
+  // JCS 專屬狀態
+  const [jcsOrders, setJcsOrders] = useState(Array.from({ length: 10 }, (_, i) => ({ id: `order_${i+1}`, index: i+1 })));
+  const [jcsSettings, setJcsSettings] = useState({ totalDomesticShipping: 0 });
+  const [editingJcsOrder, setEditingJcsOrder] = useState(null);
+
   const isAdmin = currentUser?.name === "葉葉" || currentUser?.id === "yeye";
   const selectedSPGroup = groups.find(g => g.id === secondPayGroupId);
 
-  // 2. 監聽資料庫
   useEffect(() => {
       if (!isAdmin) return;
 
@@ -50,13 +58,23 @@ export default function AdminDashboard({ currentUser }) {
       const unsubUsers = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "users"), (snap) => setUsersData(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
       const unsubGroups = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), (snap) => setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
       const unsubOrders = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "orders"), (snap) => setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+      
+      // JCS 監聽
+      const unsubJcsOrders = onSnapshot(collection(db, "artifacts", "default-app-id", "public", "data", "jf26_jcs_orders"), (snap) => {
+          const dataMap = {};
+          snap.docs.forEach(d => { dataMap[d.id] = d.data(); });
+          setJcsOrders(prev => prev.map(o => ({ ...o, ...(dataMap[o.id] || { items: [] }) })));
+      });
+      const unsubJcsSettings = onSnapshot(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_jcs_settings", "main"), (docSnap) => {
+          if (docSnap.exists()) setJcsSettings(docSnap.data());
+      });
 
       return () => { 
         unsubBulletin(); unsubMisc(); unsubUsers(); unsubGroups(); unsubOrders(); 
+        unsubJcsOrders(); unsubJcsSettings();
       };
   }, [isAdmin]);
 
-  // 3. 安全檢查：放在 Hook 之後
   if (!isAdmin) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100">
@@ -69,7 +87,50 @@ export default function AdminDashboard({ currentUser }) {
       );
   }
 
-  // --- 邏輯處理函式 ---
+  // --- JCS 處理函式 ---
+  const handleSaveJcsSettings = async () => {
+    try {
+        await setDoc(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_jcs_settings", "main"), jcsSettings);
+        alert("JCS 境內運費更新成功！");
+    } catch (e) { alert("儲存失敗"); }
+  };
+
+  const handleJcsQuickImport = async () => {
+    const rawPaste = prompt("請直接貼上 JCS Excel 資料 (ID > 名稱 > 數量 > 單價 > 狀態)：");
+    if (!rawPaste) return;
+
+    try {
+        const rows = rawPaste.split('\n').filter(row => row.trim() !== '');
+        const importData = {};
+        rows.forEach(row => {
+            const [orderId, name, qty, price, status] = row.split('\t');
+            if (!orderId || !name) return;
+            if (!importData[orderId.trim()]) importData[orderId.trim()] = { items: [] };
+            importData[orderId.trim()].items.push({
+                name: name.trim(),
+                qty: parseInt(qty) || 1,
+                price: parseInt(price) || 0,
+                status: (status || 'PENDING').trim().toUpperCase()
+            });
+        });
+
+        const batch = writeBatch(db);
+        Object.entries(importData).forEach(([docId, data]) => {
+            const docRef = doc(db, "artifacts", "default-app-id", "public", "data", "jf26_jcs_orders", docId);
+            batch.set(docRef, data, { merge: true });
+        });
+        await batch.commit();
+        alert("JCS 資料快速導入成功！");
+    } catch (e) { alert("導入失敗：" + e.message); }
+  };
+
+  const getStatusColor = (status) => {
+    if (status === 'WON') return 'bg-green-100 text-green-700 border-green-200';
+    if (status === 'LOST') return 'bg-slate-100 text-slate-400 border-slate-200 grayscale opacity-70';
+    return 'bg-white text-slate-900 border-slate-200';
+  };
+
+  // --- 其他原有的邏輯處理函式 ---
   const handleCreateGroup = async (data) => {
       try {
           await addDoc(collection(db, "artifacts", "default-app-id", "public", "data", "groups"), { 
@@ -139,6 +200,7 @@ export default function AdminDashboard({ currentUser }) {
                   { id: 'groups', label: '團務管理', icon: ListChecks },
                   { id: 'misc', label: '雜項費用', icon: FileText },
                   { id: 'js_orders', label: 'JF26對帳', icon: ShoppingBag },
+                  { id: 'jcs_admin', label: 'JCS管理', icon: Ticket }, // 🟢 新增 Tab
                   { id: 'import', label: 'Excel匯入', icon: FileSpreadsheet },
                   { id: 'bulletin', label: '公告編輯', icon: Megaphone },
                   { id: 'users', label: '成員管理', icon: Users },
@@ -171,18 +233,109 @@ export default function AdminDashboard({ currentUser }) {
                             <Plus size={18} /> 發起新團務
                         </button>
                     </div>
-                    {/* 🟢 修改：將二補設定功能交給 AdminGroupManager 內部處理，或統一在這裡開啟 */}
                     <AdminGroupManager onOpenSecondPay={(id) => setSecondPayGroupId(id)} />
                 </div>
             )}
 
             {activeTab === 'js_orders' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="mb-6 px-4">
-                        <h2 className="text-2xl font-black text-slate-800 italic">JF26 JS ONLINE 後台控制台</h2>
-                        <p className="text-slate-500 font-bold text-sm">在這裡調整匯率、運費，並更新每個人的購買狀態。</p>
-                    </div>
                     <JSAdminManager currentUser={currentUser} />
+                </div>
+            )}
+
+            {/* 🟢 JCS 管理區塊 */}
+{activeTab === 'jcs_admin' && (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+        <div className="bg-white p-6 rounded-2xl border-4 border-slate-900 shadow-[6px_6px_0px_0px_#0f172a] space-y-6">
+            <div className="flex justify-between items-center border-b-2 pb-4">
+                <h2 className="text-2xl font-black italic text-slate-800 flex items-center gap-2">
+                    <Ticket className="text-purple-600"/> JCS 抽選管理面板
+                </h2>
+                <button 
+                    onClick={handleJcsQuickImport}
+                    className="px-4 py-2 bg-slate-900 text-yellow-400 rounded-xl font-black flex items-center gap-2 hover:bg-slate-800 transition-all border-2 border-slate-900 shadow-[3px_3px_0px_0px_#ccc]"
+                >
+                    <Database size={18}/> 快速導入 Excel
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 左側：境內運費設定 */}
+                <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-200">
+                    <label className="block text-xs font-black text-slate-500 mb-2 uppercase">JCS 日本境內總運費 (JPY)</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="number"
+                            className="flex-1 font-mono font-bold border-2 border-slate-200 rounded-lg py-2 px-3 focus:border-purple-500 outline-none"
+                            value={jcsSettings.totalDomesticShipping}
+                            onChange={(e) => setJcsSettings({ ...jcsSettings, totalDomesticShipping: Number(e.target.value) })}
+                        />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-2 italic">* 前台將根據「中選件數」自動平分此金額並算入成員帳單</p>
+                </div>
+
+                {/* 右側：匯率設定 (🟢 新增) */}
+                <div className="bg-yellow-50 p-4 rounded-xl border-2 border-yellow-200">
+                    <label className="block text-xs font-black text-yellow-700 mb-2 uppercase">JCS 計算匯率</label>
+                    <div className="flex gap-2">
+                        <input 
+                            type="number"
+                            step="0.001"
+                            className="flex-1 font-mono font-bold border-2 border-yellow-200 rounded-lg py-2 px-3 focus:border-yellow-500 outline-none bg-white text-yellow-800"
+                            value={jcsSettings.exchangeRate || 0.24}
+                            onChange={(e) => setJcsSettings({ ...jcsSettings, exchangeRate: parseFloat(e.target.value) })}
+                        />
+                    </div>
+                    <p className="text-[10px] text-yellow-600 mt-2 italic">* 此匯率僅適用於 JCS 抽選訂單</p>
+                </div>
+            </div>
+
+            {/* 底部儲存按鈕 (🟢 統一儲存運費與匯率) */}
+            <div className="flex justify-end pt-4 border-t-2 border-slate-100">
+                <button 
+                    onClick={handleSaveJcsSettings}
+                    className="bg-purple-600 text-white px-8 py-3 rounded-xl font-black shadow-[4px_4px_0px_0px_#4c1d95] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_#4c1d95] active:translate-y-0 active:shadow-none transition-all flex items-center gap-2"
+                >
+                    <Save size={18}/> 儲存全域設定
+                </button>
+            </div>
+        </div>
+
+                    {/* 🟢 JCS 訂單卡片 (管理員模式) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {jcsOrders.map((order) => (
+                            <div key={order.id} className="bg-white rounded-xl border-4 border-slate-900 overflow-hidden shadow-[4px_4px_0px_0px_#6b21a8]">
+                                <div className="bg-slate-900 text-white px-4 py-3 flex justify-between items-center">
+                                    <h4 className="font-black italic text-lg flex items-center gap-2"><Ticket size={20} className="text-purple-400"/> ORDER #{order.index}</h4>
+                                    <button onClick={() => setEditingJcsOrder(order)} className="text-xs bg-slate-700 px-2 py-1 rounded flex items-center gap-1 hover:bg-slate-600 transition-colors">
+                                        <Edit3 size={12}/> 分配/編輯
+                                    </button>
+                                </div>
+                                <div className="p-4 min-h-[120px]">
+                                    {(!order.items || order.items.length === 0) ? (
+                                        <div className="text-slate-300 font-bold text-center py-6">無資料</div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {order.items.map((item, idx) => (
+                                                <div key={idx} className={`p-2 rounded border-2 ${getStatusColor(item.status)}`}>
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <div className="font-bold text-sm">{item.name}</div>
+                                                            <div className="text-[10px] opacity-75">¥{item.price} x {item.qty}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="font-black">¥{item.price * item.qty}</div>
+                                                            {item.assignedTo && <div className="text-[10px] font-black bg-white/50 px-1 rounded">歸屬: {item.assignedTo}</div>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -265,7 +418,6 @@ export default function AdminDashboard({ currentUser }) {
         </div>
       </main>
 
-      {/* 🔴 Modal 區塊 */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="發起新團務">
           <GroupForm onSubmit={handleCreateGroup} onCancel={() => setIsModalOpen(false)} submitLabel="發佈團購" />
       </Modal>
@@ -285,6 +437,64 @@ export default function AdminDashboard({ currentUser }) {
             />
         )}
       </Modal>
+
+      {/* 🟢 JCS 編輯 Modal (後台專用) */}
+      <Modal isOpen={!!editingJcsOrder} onClose={() => setEditingJcsOrder(null)} title={`管理 JCS 訂單 #${editingJcsOrder?.index}`}>
+        {editingJcsOrder && (
+            <JCSOrderForm 
+                initialData={editingJcsOrder}
+                onSubmit={async (data) => {
+                    await setDoc(doc(db, "artifacts", "default-app-id", "public", "data", "jf26_jcs_orders", editingJcsOrder.id), data);
+                    setEditingJcsOrder(null);
+                }}
+                onCancel={() => setEditingJcsOrder(null)}
+            />
+        )}
+      </Modal>
     </div>
   );
+}
+
+// 🟢 JCS 編輯表單 (包含分配下拉選單) - 移至 AdminDashboard 內部
+function JCSOrderForm({ initialData, onSubmit, onCancel }) {
+    const [items, setItems] = useState(initialData.items || []);
+    const handleUpdate = (idx, field, val) => {
+        const n = [...items]; n[idx][field] = val; setItems(n);
+    };
+
+    return (
+        <form onSubmit={e => { e.preventDefault(); onSubmit({ items }); }} className="space-y-4">
+            <div className="max-h-[50vh] overflow-y-auto space-y-4 p-1">
+                {items.map((item, idx) => (
+                    <div key={idx} className="bg-slate-50 p-3 rounded border-2 border-slate-200 relative space-y-2">
+                        <button type="button" onClick={() => setItems(items.filter((_,i)=>i!==idx))} className="absolute top-1 right-1 text-slate-400 hover:text-red-500"><X size={16}/></button>
+                        <input className="w-full text-sm font-bold border border-slate-300 rounded p-1" value={item.name} onChange={e=>handleUpdate(idx,'name',e.target.value)} placeholder="品項名稱" required />
+                        <div className="flex gap-2">
+                            <input type="number" className="w-20 text-sm border border-slate-300 rounded p-1" value={item.qty} onChange={e=>handleUpdate(idx,'qty',e.target.value)} placeholder="數量" />
+                            <input type="number" className="flex-1 text-sm border border-slate-300 rounded p-1" value={item.price} onChange={e=>handleUpdate(idx,'price',e.target.value)} placeholder="單價" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400">分配給:</span>
+                            <select className="flex-1 text-xs font-bold border rounded p-1 bg-white" value={item.assignedTo || ""} onChange={e=>handleUpdate(idx, 'assignedTo', e.target.value)}>
+                                <option value="">未分配</option>
+                                {Object.values(USER_MAPPING).map(name => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex gap-2">
+                            {['PENDING', 'WON', 'LOST'].map(s => (
+                                <button key={s} type="button" onClick={()=>handleUpdate(idx,'status',s)} className={`flex-1 py-1 rounded text-xs font-bold border transition-colors ${item.status===s ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border-slate-200'}`}>
+                                    {s==='WON'?'中選':s==='LOST'?'落選':'等待'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <button type="button" onClick={()=>setItems([...items, {name:'', qty:1, price:0, status:'PENDING', assignedTo:''}])} className="w-full py-2 bg-slate-100 border-2 border-dashed border-slate-300 rounded font-bold text-slate-500 hover:bg-slate-200 transition-colors">+ 新增品項</button>
+            <div className="flex justify-end gap-2 border-t pt-4">
+                <button type="button" onClick={onCancel} className="px-4 py-2 rounded font-bold text-slate-500 border border-slate-300">取消</button>
+                <button type="submit" className="px-6 py-2 bg-slate-900 text-white rounded font-bold hover:bg-slate-800">儲存變更</button>
+            </div>
+        </form>
+    );
 }

@@ -159,6 +159,21 @@ function JCSOrderForm({ initialData, onSubmit, onCancel }) {
                                     value={item.price} onChange={e => handleUpdateItem(idx, 'price', e.target.value)}
                                 />
                             </div>
+
+                                <div className="flex gap-2 items-center">
+                                        <label className="text-[10px] font-bold text-slate-500 whitespace-nowrap">分配給：</label>
+                                        <select 
+                                            className="flex-1 text-xs border border-slate-300 rounded p-1 bg-white font-bold"
+                                            value={item.assignedTo || ''}
+                                            onChange={e => handleUpdateItem(idx, 'assignedTo', e.target.value)}
+                                        >
+                                            <option value="">尚未分配</option>
+                                            {Object.entries(USER_MAPPING).map(([id, name]) => (
+                                                <option key={id} value={name}>{name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
                             <div className="flex gap-2 text-xs font-bold">
                                 {['PENDING', 'WON', 'LOST'].map(status => (
                                     <button 

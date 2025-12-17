@@ -332,9 +332,17 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                 {activeTab === 'misc' && (
                     <div className="animate-in fade-in slide-in-from-bottom-4">
                         <div className="bg-white rounded-lg shadow-sm border-2 border-slate-200 overflow-hidden">
-                            <table className="w-full text-sm text-left font-bold">
+                            <div className="overflow-x-auto"> 
+                            <table className="w-full text-sm text-left font-bold min-w-[500px]"> 
+                                {/* 3. 上方的 min-w-[500px] 是為了確保在手機上表格不會擠壓太嚴重，強制產生滾輪 */}
                                 <thead className="bg-slate-100 text-slate-700 border-b-2 border-slate-200">
-                                    <tr><th className="px-4 py-3">日期</th><th className="px-4 py-3">明細</th><th className="px-4 py-3">備註</th><th className="px-4 py-3 text-right">金額</th><th className="px-4 py-3 text-center">狀態</th></tr>
+                                    <tr>
+                                        <th className="px-4 py-3 whitespace-nowrap">日期</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">明細</th>
+                                        <th className="px-4 py-3 whitespace-nowrap">備註</th>
+                                        <th className="px-4 py-3 text-right whitespace-nowrap">金額</th>
+                                        <th className="px-4 py-3 text-center whitespace-nowrap">狀態</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
                                     {miscCharges.filter(m => m.targetUserId === appUser?.id || appUser?.name === '葉葉').sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(m => (
@@ -349,7 +357,8 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
+                    </div> 
+                </div>
                 )}
 
                 {['active', 'completed', 'shipping', 'closed'].includes(activeTab) && (

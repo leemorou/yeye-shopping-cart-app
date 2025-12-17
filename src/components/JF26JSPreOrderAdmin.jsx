@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Save, Calculator, RefreshCcw, DollarSign, Truck, 
-    CheckCircle, XCircle, AlertTriangle, PackageCheck, Scale, Info
+    CheckCircle, XCircle, AlertTriangle, PackageCheck, Scale, Info, CheckSquare
 } from 'lucide-react';
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -76,6 +76,15 @@ export default function JSAdminManager({ currentUser }) {
         } catch (e) {
             alert("儲存失敗：" + e.message);
         }
+    };
+
+    const batchUpdateUserStatus = (buyerName, field, status) => {
+    if (!confirm(`確定要將 ${buyerName} 的所有商品標記為【${status}】嗎？`)) return;
+    
+    setOrders(prev => prev.map(item => 
+        item.buyer === buyerName ? { ...item, [field]: status } : item
+    ));
+    setIsDirty(true);
     };
 
     // 3. 計算邏輯
@@ -182,6 +191,30 @@ export default function JSAdminManager({ currentUser }) {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* 快速對帳控制台 */}
+            <div className="bg-slate-50 p-4 border-x-4 border-t-4 border-slate-900 flex flex-wrap gap-4 items-center">
+                <span className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                    <CheckSquare size={16}/> 買家快速對帳：
+                </span>
+                {Array.from(new Set(orders.map(o => o.buyer))).map(buyer => (
+                    <div key={buyer} className="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-lg p-1 px-2 shadow-sm">
+                        <span className="text-sm font-black mr-2 text-blue-600">{buyer}</span>
+                        <button 
+                            onClick={() => batchUpdateUserStatus(buyer, 'paymentStatus', '已收款')}
+                            className="text-[10px] bg-green-500 text-white px-2 py-1 rounded font-bold hover:bg-green-600 transition-colors"
+                        >
+                            商品全收
+                        </button>
+                        <button 
+                            onClick={() => batchUpdateUserStatus(buyer, 'shippingPaymentStatus', '已收款')}
+                            className="text-[10px] bg-purple-500 text-white px-2 py-1 rounded font-bold hover:bg-purple-600 transition-colors"
+                        >
+                            二補全收
+                        </button>
+                    </div>
+                ))}
             </div>
 
             {/* 對帳清單表格 */}
