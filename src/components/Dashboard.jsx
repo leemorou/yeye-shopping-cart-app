@@ -6,7 +6,7 @@ import {
     Heart, CheckCircle, Plus, 
     ExternalLink, Trash2, Archive,
     Zap, Shield, Megaphone, Search, Plane, Info, Tag,
-    FileText 
+    FileText, CreditCard, Filter 
 } from 'lucide-react'; 
 
 import WishForm from "./WishForm";
@@ -42,6 +42,7 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
 
     const [filterStart, setFilterStart] = useState('');
     const [filterEnd, setFilterEnd] = useState('');
+    const [filterPaymentStatus, setFilterPaymentStatus] = useState('');
 
     const [bulletin, setBulletin] = useState("<div>Loading...</div>");
 
@@ -66,7 +67,7 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
         return () => { unsubWishes(); unsubGroups(); unsubOrders(); unsubMisc(); unsubBulletin(); };
     }, []);
 
-    useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd]);
+    useEffect(() => { setCurrentPage(1); }, [activeTab, filterStart, filterEnd, filterPaymentStatus]);
 
     // --- 邏輯功能 ---
     const checkIsNew = (item, type) => {
@@ -234,6 +235,7 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
 
     const processGroups = (statusList) => {
         let filtered = groups.filter(g => statusList.includes(g.status));
+        
         if (filterStart || filterEnd) {
             filtered = filtered.filter(g => {
                 if (!g.deadline || g.deadline === '個人委託') return false; 
@@ -243,6 +245,20 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                 return deadlineTime >= start && deadlineTime < end;
             });
         }
+
+        // 🟢 修改後的篩選邏輯：當選擇「已收款」時，包含多種結清狀態
+        if (filterPaymentStatus) {
+            if (filterPaymentStatus === '已收款') {
+                filtered = filtered.filter(g => 
+                    g.paymentStatus === '已收款' || 
+                    g.paymentStatus === '商品金額 已收款' || 
+                    g.paymentStatus === '商品金額+二補 已收款'
+                );
+            } else {
+                filtered = filtered.filter(g => (g.paymentStatus || '未收款') === filterPaymentStatus);
+            }
+        }
+
         return filtered.sort((a, b) => (a.releaseDate || '9999-12-31').localeCompare(b.releaseDate || '9999-12-31'));
     };
 
@@ -302,6 +318,17 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             <main className="max-w-5xl mx-auto px-4 py-8">
                 {activeTab === 'wishing' && (
                     <div className="animate-in fade-in slide-in-from-bottom-4">
+                        <div className="mb-6 bg-white p-4 rounded-xl border-2 border-slate-900 shadow-[4px_4px_0px_0px_#0f172a] flex items-start gap-4">
+                            <div className="bg-red-100 p-2 rounded-lg border-2 border-red-600 shrink-0">
+                                <Heart size={20} className="text-red-600 fill-red-600" />
+                            </div>
+                            <div>
+                                <h4 className="font-black text-xs uppercase tracking-tighter text-slate-400 mb-1 italic">Wish Pool Briefing</h4>
+                                <p className="text-sm font-bold text-slate-700 leading-relaxed">
+                                    歡迎來到英雄許願池！大家可以在這裡留下想要開團的商品，英雄集氣（+1）越高，開團機率就越高喔！
+                                </p>
+                            </div>
+                        </div>
                         <div className="flex justify-end mb-6">
                             <button onClick={() => { setEditingWish(null); setModalType('wish'); }} className="px-6 py-2 bg-red-600 text-white border-2 border-red-800 rounded font-black hover:bg-red-700 flex items-center gap-2 shadow-[2px_2px_0px_0px_rgba(153,27,27,1)] italic"><Plus size={20} /> MAKE A WISH</button>
                         </div>
@@ -334,7 +361,6 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                         <div className="bg-white rounded-lg shadow-sm border-2 border-slate-200 overflow-hidden">
                             <div className="overflow-x-auto"> 
                             <table className="w-full text-sm text-left font-bold min-w-[500px]"> 
-                                {/* 3. 上方的 min-w-[500px] 是為了確保在手機上表格不會擠壓太嚴重，強制產生滾輪 */}
                                 <thead className="bg-slate-100 text-slate-700 border-b-2 border-slate-200">
                                     <tr>
                                         <th className="px-4 py-3 whitespace-nowrap">日期</th>
@@ -363,13 +389,54 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
 
                 {['active', 'completed', 'shipping', 'closed'].includes(activeTab) && (
                     <div className="animate-in fade-in slide-in-from-bottom-4">
-                        <div className="mb-6 bg-slate-200 p-3 rounded-lg flex flex-col sm:flex-row items-center gap-4 border-2 border-slate-300">
-                            <Search size={18} className="text-slate-500"/>
-                            <div className="flex items-center gap-2 flex-1 w-full font-bold">
-                                <input type="date" className="border-2 border-slate-300 rounded px-2 py-1 text-sm flex-1" value={filterStart} onChange={(e) => setFilterStart(e.target.value)} />
+                        {activeTab === 'active' && (
+                            <div className="mb-6 bg-white p-4 rounded-xl border-2 border-slate-900 shadow-[4px_4px_0px_0px_#7c3aed] flex items-start gap-4">
+                                <div className="bg-purple-100 p-2 rounded-lg border-2 border-purple-600 shrink-0">
+                                    <Shield size={20} className="text-purple-600 fill-purple-600" />
+                                </div>
+                                <div className="flex-1">
+                                    <h4 className="font-black text-xs uppercase tracking-tighter text-slate-400 mb-1 italic">Personal Request Protocol</h4>
+                                    <p className="text-sm font-bold text-slate-700 leading-relaxed">
+                                        【個人委託說明】請提供正確的商品網址與明細，確認後系統會自動為您建立專屬訂單。
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                        <div className="mb-6 bg-slate-200 p-3 rounded-lg flex flex-col lg:flex-row items-center gap-4 border-2 border-slate-300">
+                            <div className="flex items-center gap-2 text-slate-500 font-bold shrink-0">
+                                <Search size={18} />
+                                <span className="text-sm">任務搜尋</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 flex-1 w-full font-bold">
+                                <input type="date" className="border-2 border-slate-300 rounded px-2 py-1 text-xs flex-1 min-w-[120px]" value={filterStart} onChange={(e) => setFilterStart(e.target.value)} />
                                 <span className="text-slate-400">~</span>
-                                <input type="date" className="border-2 border-slate-300 rounded px-2 py-1 text-sm flex-1" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)} />
-                                {(filterStart || filterEnd) && <button onClick={() => { setFilterStart(''); setFilterEnd(''); }} className="text-xs bg-slate-400 text-white px-3 py-1.5 rounded">清除</button>}
+                                <input type="date" className="border-2 border-slate-300 rounded px-2 py-1 text-xs flex-1 min-w-[120px]" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)} />
+                                
+                                <div className="flex items-center gap-1 bg-white border-2 border-slate-300 rounded px-2 py-1 flex-1 min-w-[160px]">
+                                    <Filter size={14} className="text-slate-400" />
+                                    <select 
+                                        className="text-xs w-full bg-transparent outline-none cursor-pointer font-black"
+                                        value={filterPaymentStatus}
+                                        onChange={(e) => setFilterPaymentStatus(e.target.value)}
+                                    >
+                                        <option value="">所有收款狀態</option>
+                                        <option value="未收款">未收款</option>
+                                        <option value="商品收款中">商品收款中</option>
+                                        <option value="二補收款中">二補收款中</option>
+                                        <option value="商品+二補收款中">商品+二補收款中</option>
+                                        {/* 🟢 這裡的選項代表包含所有結清狀態 */}
+                                        <option value="已收款">已結清 / 已收款</option>
+                                    </select>
+                                </div>
+
+                                {(filterStart || filterEnd || filterPaymentStatus) && (
+                                    <button 
+                                        onClick={() => { setFilterStart(''); setFilterEnd(''); setFilterPaymentStatus(''); }} 
+                                        className="text-[10px] bg-slate-400 text-white px-3 py-2 rounded hover:bg-slate-500 transition-colors uppercase font-black"
+                                    >
+                                        Reset
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -384,8 +451,20 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                     <div key={group.id} className={`bg-white rounded-lg p-5 border-2 border-slate-900 flex flex-col relative ${activeTab === 'closed' ? 'opacity-75 grayscale-[0.5]' : ''}`} onClick={() => activeTab === 'active' && markAsRead(group, 'group')}>
                                         {activeTab === 'active' && checkIsNew(group, 'group') && <div className="absolute -top-3 -left-3 bg-red-600 text-white text-xs font-black px-2 py-1 shadow-md -rotate-12 z-10 border-2 border-white animate-bounce">NEW!</div>}
                                         <div className="flex flex-col gap-1 mb-2">
-                                            <span className={`self-start px-2 py-0.5 text-[10px] font-black rounded border ${group.type === '現貨' ? 'bg-green-600 text-white border-green-800' : group.type === '個人委託' ? 'bg-purple-600 text-white border-purple-800' : 'bg-yellow-400 text-slate-900 border-slate-900'}`}>{group.type === '現貨' ? '⚡ 現貨' : group.type === '個人委託' ? '📜 個人委託' : '⏳ 預購'}</span>
-                                            <h3 className="font-black text-xl italic">{group.title}</h3>
+                                            <div className="flex flex-wrap gap-1">
+                                                <span className={`px-2 py-0.5 text-[10px] font-black rounded border ${group.type === '現貨' ? 'bg-green-600 text-white border-green-800' : group.type === '個人委託' ? 'bg-purple-600 text-white border-purple-800' : 'bg-yellow-400 text-slate-900 border-slate-900'}`}>{group.type === '現貨' ? '⚡ 現貨' : group.type === '個人委託' ? '📜 個人委託' : '⏳ 預購'}</span>
+                                                {group.paymentStatus && group.paymentStatus !== '未收款' && (
+                                                    <span className={`px-2 py-0.5 text-[10px] font-black rounded border flex items-center gap-1
+                                                        ${(group.paymentStatus === '已收款' || group.paymentStatus === '商品金額 已收款' || group.paymentStatus === '商品金額+二補 已收款') 
+                                                            ? 'bg-slate-100 text-slate-500 border-slate-300' // 已收款：灰色，無動畫
+                                                            : 'bg-emerald-500 text-white border-emerald-700 shadow-[2px_2px_0px_0px_rgba(5,150,105,1)] animate-pulse' // 收款中：綠色，有動畫
+                                                        }`}
+                                                    >
+                                                        <CreditCard size={10} /> {group.paymentStatus}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <h3 className="font-black text-base">{group.title}</h3>
                                         </div>
                                         <div className="mb-4 aspect-video bg-slate-100 rounded overflow-hidden"><ImageSlider images={group.images || []} /></div>
                                         <div className="space-y-2 text-sm text-slate-600 mb-6 flex-1 font-bold">
@@ -404,7 +483,6 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
                                         <div className="flex gap-2 mt-auto">
                                             {activeTab === 'active' && <button className={`flex-1 px-4 py-2 rounded font-black text-white border-2 transition-all ${hasOrdered ? 'bg-green-600 border-green-800' : 'bg-red-600 border-red-800'}`} onClick={(e) => { e.stopPropagation(); setSelectedGroupId(group.id); setModalType('joinGroup'); }}>{hasOrdered ? "修改訂單" : "跟團"}</button>}
                                             <button className={`px-3 py-2 rounded font-bold border-2 flex-1 ${activeTab === 'active' ? 'bg-white border-slate-300 text-slate-600' : 'bg-slate-100 border-slate-300 text-slate-700'}`} onClick={(e) => { e.stopPropagation(); setSelectedGroupId(group.id); setModalType('viewOrders'); }}>查看明細</button>
-                                            {/* 🟢 顯示二補明細按鈕 */}
                                             {['shipping', 'closed'].includes(activeTab) && (
                                                 <button className="px-3 py-2 rounded font-bold border-2 bg-yellow-400 border-slate-900 text-slate-900 flex-1" onClick={(e) => { e.stopPropagation(); setSelectedGroupId(group.id); setModalType('secondPayment'); }}>二補明細</button>
                                             )}
@@ -427,7 +505,6 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             {/* Modals */}
             <Modal isOpen={modalType === 'wish'} onClose={() => { setModalType(null); setEditingWish(null); }} title={editingWish ? "修改願望" : "我要許願"}><WishForm onSubmit={handleWishSubmit} onCancel={() => { setModalType(null); setEditingWish(null); }} initialData={editingWish} /></Modal>
             <Modal isOpen={modalType === 'createPersonalRequest'} onClose={() => setModalType(null)} title="發布個人委託"><PersonalRequestForm onSubmit={handleCreatePersonalRequest} onCancel={() => setModalType(null)} /></Modal>
-            {/* 🟢 二補明細 Modal */}
             <Modal isOpen={modalType === 'secondPayment'} onClose={() => setModalType(null)} title="國際運二補試算">
                 {selectedGroup && <SecondPaymentForm group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onUpdate={null} isReadOnly={true} />}
             </Modal>
@@ -435,7 +512,23 @@ export default function Dashboard({ appUser, usersData, handleLogout }) {
             <Modal isOpen={modalType === 'changePwd'} onClose={() => setModalType(null)} title="修改密碼"><ChangePasswordForm onSubmit={handleChangePassword} /></Modal>
             <Modal isOpen={modalType === 'changeAvatar'} onClose={() => setModalType(null)} title="更改頭像"><ChangeAvatarForm currentUser={appUser} onSubmit={handleChangeAvatar} /></Modal>
             <Modal isOpen={modalType === 'joinGroup'} onClose={() => setModalType(null)} title={`跟團：${selectedGroup?.title}`}>{selectedGroup && <OrderForm group={selectedGroup} currentOrder={orders.find(o => o.groupId === selectedGroup?.id && o.userId === appUser?.id)} onSubmit={(items) => handleSubmitOrder(items, selectedGroup.id)} />}</Modal>
-            <Modal isOpen={modalType === 'viewOrders'} onClose={() => setModalType(null)} title={`訂單明細：${selectedGroup?.title}`}>{selectedGroup && <OrderSummary group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onEdit={selectedGroup?.status === '揪團中' ? () => setModalType('joinGroup') : null} />}</Modal>
+            
+            <Modal isOpen={modalType === 'viewOrders'} onClose={() => setModalType(null)} title={`訂單明細：${selectedGroup?.title}`}>
+                {selectedGroup && (
+                    <>
+                        <div className={`mb-4 p-3 rounded-lg border-2 font-black text-center text-sm
+                            ${(selectedGroup.paymentStatus === '未收款' || !selectedGroup.paymentStatus) ? 'bg-slate-50 border-slate-200 text-slate-400' : 
+                            (selectedGroup.paymentStatus === '已收款' || selectedGroup.paymentStatus === '商品金額 已收款' || selectedGroup.paymentStatus === '商品金額+二補 已收款') ? 'bg-blue-50 border-blue-200 text-blue-600' : 
+                            'bg-emerald-50 border-emerald-500 text-emerald-700 italic'}
+                        `}>
+                            {(selectedGroup.paymentStatus === '未收款' || !selectedGroup.paymentStatus) ? '🛡️ 英雄任務準備中 (尚未開始收款)' : 
+                             (selectedGroup.paymentStatus === '已收款' || selectedGroup.paymentStatus === '商品金額 已收款' || selectedGroup.paymentStatus === '商品金額+二補 已收款') ? '✅ 本次任務經費已結清' : 
+                             `📢 英雄注意：${selectedGroup.paymentStatus}！請確認您的個人帳單`}
+                        </div>
+                        <OrderSummary group={selectedGroup} orders={orders.filter(o => o.groupId === selectedGroup?.id)} currentUser={appUser} onEdit={selectedGroup?.status === '揪團中' ? () => setModalType('joinGroup') : null} />
+                    </>
+                )}
+            </Modal>
         </div>
     );
 }

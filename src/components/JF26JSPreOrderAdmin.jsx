@@ -194,28 +194,42 @@ export default function JSAdminManager({ currentUser }) {
             </div>
 
             {/* 快速對帳控制台 */}
-            <div className="bg-slate-50 p-4 border-x-4 border-t-4 border-slate-900 flex flex-wrap gap-4 items-center">
-                <span className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                    <CheckSquare size={16}/> 買家快速對帳：
-                </span>
-                {Array.from(new Set(orders.map(o => o.buyer))).map(buyer => (
-                    <div key={buyer} className="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-lg p-1 px-2 shadow-sm">
-                        <span className="text-sm font-black mr-2 text-blue-600">{buyer}</span>
-                        <button 
-                            onClick={() => batchUpdateUserStatus(buyer, 'paymentStatus', '已收款')}
-                            className="text-[10px] bg-green-500 text-white px-2 py-1 rounded font-bold hover:bg-green-600 transition-colors"
-                        >
-                            商品全收
-                        </button>
-                        <button 
-                            onClick={() => batchUpdateUserStatus(buyer, 'shippingPaymentStatus', '已收款')}
-                            className="text-[10px] bg-purple-500 text-white px-2 py-1 rounded font-bold hover:bg-purple-600 transition-colors"
-                        >
-                            二補全收
-                        </button>
-                    </div>
-                ))}
+            {/* 🟢 快速對帳控制台 (比照事後通販優化) */}
+<div className="bg-slate-900 p-5 rounded-2xl border-4 border-slate-900 shadow-[6px_6px_0px_0px_#ccc]">
+    <div className="flex items-center gap-2 mb-4">
+        <CheckSquare className="text-yellow-400" size={20}/>
+        <h4 className="text-white font-black italic tracking-tighter">HERO 快速對帳面板 (先行)</h4>
+    </div>
+    
+    {/* 網格佈局：手機 2 欄 / 平板 4 欄 / 電腦 6 欄 */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        {Array.from(new Set(orders.map(o => o.buyer))).sort().map(buyer => (
+            <div key={buyer} className="bg-slate-800 border border-slate-700 p-2 rounded-xl flex flex-col gap-2 transition-all hover:border-slate-500">
+                <div className="text-yellow-400 font-black text-center border-b border-slate-700 pb-1 text-sm truncate px-1">
+                    {buyer}
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                    <button 
+                        onClick={() => batchUpdateUserStatus(buyer, 'paymentStatus', '已收款')}
+                        className="text-[10px] bg-green-600 text-white py-1.5 rounded font-black hover:bg-green-500 active:scale-95 transition-all"
+                    >
+                        商品
+                    </button>
+                    <button 
+                        onClick={() => batchUpdateUserStatus(buyer, 'shippingPaymentStatus', '已收款')}
+                        className="text-[10px] bg-purple-600 text-white py-1.5 rounded font-black hover:bg-purple-500 active:scale-95 transition-all"
+                    >
+                        二補
+                    </button>
+                </div>
             </div>
+        ))}
+    </div>
+    
+    <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-500 font-bold italic">
+        <Info size={12}/> 提示：點擊按鈕會將該成員「所有」先行商品標記為已收款。
+    </div>
+</div>
 
             {/* 對帳清單表格 */}
             <div className="bg-white border-4 border-slate-900 rounded-2xl overflow-hidden shadow-[8px_8px_0px_0px_#0f172a]">
